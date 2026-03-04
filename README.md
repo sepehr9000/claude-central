@@ -1,6 +1,6 @@
 # Claude Session Manager
 
-A web UI to browse, star, and clone your Claude Code sessions.
+A desktop app (Electron) to browse, star, and clone your Claude Code sessions.
 
 ## Features
 
@@ -11,33 +11,38 @@ A web UI to browse, star, and clone your Claude Code sessions.
 - **Clone** any session — opens a new Terminal window with `claude --resume <id>`, ready to go
 - **Filter** by project or starred status
 
-## Setup
+## Quick Start
 
 ```bash
+# Install dependencies
 npm install
 cd client && npm install && cd ..
-```
 
-## Run (development)
+# Build the frontend
+npm run build:client
 
-```bash
-npm run dev
-```
-
-This starts:
-- **API server** on `http://localhost:3000`
-- **React dev server** on `http://localhost:3001` (proxies API calls to :3000)
-
-Open `http://localhost:3001` in your browser.
-
-## Run (production)
-
-```bash
-npm run build
+# Launch the desktop app
 npm start
 ```
 
-Then open `http://localhost:3000`.
+## Development
+
+```bash
+# Run everything (server + vite + electron)
+npm run electron:dev
+
+# Or run the web version only (no Electron)
+npm run dev
+# Then open http://localhost:3001
+```
+
+## Build macOS App
+
+```bash
+npm run electron:build
+```
+
+This creates a `Claude Session Manager.app` in the `dist/` folder that you can drag to your Applications folder.
 
 ## How It Works
 
@@ -49,5 +54,5 @@ Then open `http://localhost:3000`.
 ## Requirements
 
 - Node.js 18+
-- macOS (for terminal launching; the browse/star features work anywhere)
+- macOS (for terminal launching and .app packaging)
 - Claude Code installed (`claude` CLI available in PATH)
