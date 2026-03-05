@@ -27,7 +27,7 @@ function createWindow() {
     minHeight: 500,
     title: 'Claude Session Manager',
     titleBarStyle: 'hiddenInset',
-    backgroundColor: '#0d1117',
+    backgroundColor: '#0a0b10',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

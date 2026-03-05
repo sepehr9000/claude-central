@@ -8,6 +8,7 @@ const os = require('os');
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 const PROJECTS_DIR = path.join(CLAUDE_DIR, 'projects');
 const STARS_FILE = path.join(CLAUDE_DIR, 'session-manager-stars.json');
+const META_FILE = path.join(CLAUDE_DIR, 'session-manager-meta.json');
 
 function loadStars() {
   try {
@@ -19,6 +20,18 @@ function loadStars() {
 
 function saveStars(stars) {
   fs.writeFileSync(STARS_FILE, JSON.stringify(stars, null, 2));
+}
+
+function loadMeta() {
+  try {
+    return JSON.parse(fs.readFileSync(META_FILE, 'utf-8'));
+  } catch {
+    return {};
+  }
+}
+
+function saveMeta(meta) {
+  fs.writeFileSync(META_FILE, JSON.stringify(meta, null, 2));
 }
 
 function decodeProjectPath(dirName) {
@@ -112,6 +125,7 @@ function createServer(staticDir) {
       }
 
       const stars = loadStars();
+      const meta = loadMeta();
       const sessions = [];
       const projectDirs = fs.readdirSync(PROJECTS_DIR);
 
@@ -132,6 +146,7 @@ function createServer(staticDir) {
 
           if (!metadata || metadata.messageCount === 0) continue;
 
+          const sessionMeta = meta[sessionId] || {};
           sessions.push({
             id: sessionId,
             projectDir: projDir,
@@ -141,6 +156,8 @@ function createServer(staticDir) {
             createdAt: metadata.firstTimestamp || stat.birthtime.toISOString(),
             updatedAt: metadata.lastTimestamp || stat.mtime.toISOString(),
             starred: !!stars[sessionId],
+            customName: sessionMeta.name || undefined,
+            customDescription: sessionMeta.description || undefined,
             ...metadata,
           });
         }
@@ -213,13 +230,24 @@ function createServer(staticDir) {
     res.json({ starred: !!stars[id] });
   });
 
+  // POST /api/sessions/:id/meta
+  app.post('/api/sessions/:id/meta', (req, res) => {
+    const { id } = req.params;
+    const { name, description } = req.body;
+    const meta = loadMeta();
+    meta[id] = { name: name || '', description: description || '' };
+    if (!meta[id].name && !meta[id].description) delete meta[id];
+    saveMeta(meta);
+    res.json({ success: true });
+  });
+
   // POST /api/sessions/:id/clone
   app.post('/api/sessions/:id/clone', (req, res) => {
     const { id } = req.params;
     const { projectPath } = req.body;
 
     const cdCmd = projectPath ? `cd ${projectPath.replace(/'/g, "'\\''")} && ` : '';
-    const claudeCmd = `${cdCmd}claude --resume ${id}`;
+    const claudeCmd = `${cdCmd}unset CLAUDECODE && claude --resume ${id}`;
 
     const script = `
       tell application "Terminal"

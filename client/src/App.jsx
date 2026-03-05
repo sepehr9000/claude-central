@@ -28,11 +28,14 @@ export default function App() {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState('all'); // 'all', 'starred', project name
+  const [filter, setFilter] = useState('all');
   const [selectedSession, setSelectedSession] = useState(null);
   const [messages, setMessages] = useState([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [toast, setToast] = useState(null);
+  const [editingSession, setEditingSession] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editDescription, setEditDescription] = useState('');
 
   useEffect(() => {
     fetchSessions();
@@ -99,18 +102,48 @@ export default function App() {
     }
   }
 
+  function openEditModal(e, session) {
+    e.stopPropagation();
+    setEditingSession(session);
+    setEditName(session.customName || '');
+    setEditDescription(session.customDescription || '');
+  }
+
+  async function saveSessionMeta() {
+    if (!editingSession) return;
+    try {
+      const res = await fetch(`/api/sessions/${editingSession.id}/meta`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editName, description: editDescription }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSessions(prev =>
+          prev.map(s =>
+            s.id === editingSession.id
+              ? { ...s, customName: editName || undefined, customDescription: editDescription || undefined }
+              : s
+          )
+        );
+        showToast('Session updated', 'success');
+      }
+    } catch {
+      showToast('Failed to save', 'error');
+    }
+    setEditingSession(null);
+  }
+
   function showToast(message, type = 'info') {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   }
 
-  // Gather unique project names for filter
   const projects = useMemo(() => {
     const set = new Set(sessions.map(s => projectName(s.projectPath)));
     return [...set].sort();
   }, [sessions]);
 
-  // Filter & search
   const filtered = useMemo(() => {
     return sessions.filter(s => {
       if (filter === 'starred' && !s.starred) return false;
@@ -120,6 +153,8 @@ export default function App() {
         const searchable = [
           s.firstUserMessage,
           s.sessionName,
+          s.customName,
+          s.customDescription,
           s.projectPath,
           s.id,
         ].filter(Boolean).join(' ').toLowerCase();
@@ -132,6 +167,7 @@ export default function App() {
   if (loading) {
     return (
       <div className="app">
+        <div className="drag-region" />
         <div className="loading">
           <div className="spinner" />
           <p style={{ marginTop: 12 }}>Loading sessions...</p>
@@ -142,14 +178,16 @@ export default function App() {
 
   return (
     <div className="app">
+      <div className="drag-region" />
+
       {/* Header */}
       <div className="header">
         <h1>
-          <span className="logo">C</span>
-          Claude Session Manager
+          <img src="/ai-squads-logo.png" alt="AI Squads" className="logo" />
+          Session Manager
         </h1>
         <span className="session-count">
-          {sessions.length} session{sessions.length !== 1 ? 's' : ''} found
+          {filtered.length} of {sessions.length} session{sessions.length !== 1 ? 's' : ''}
         </span>
       </div>
 
@@ -189,7 +227,7 @@ export default function App() {
       {filtered.length === 0 ? (
         <div className="empty-state">
           <div className="icon">
-            {search || filter !== 'all' ? '🔍' : '📂'}
+            {search || filter !== 'all' ? '?' : '[]'}
           </div>
           <h3>
             {search || filter !== 'all'
@@ -215,21 +253,21 @@ export default function App() {
                 onClick={e => toggleStar(e, session)}
                 title={session.starred ? 'Unstar' : 'Star this session'}
               >
-                {session.starred ? '★' : '☆'}
+                {session.starred ? '\u2605' : '\u2606'}
               </button>
 
               <div className="session-info">
                 <div className="session-header">
                   <span className="session-name">
-                    {session.sessionName || truncate(session.firstUserMessage, 60) || session.id.slice(0, 8)}
+                    {session.customName || session.sessionName || truncate(session.firstUserMessage, 60) || session.id.slice(0, 8)}
                   </span>
                 </div>
-                {session.firstUserMessage && !session.sessionName && (
-                  <div className="session-preview">
-                    {truncate(session.firstUserMessage, 120)}
+                {session.customDescription && (
+                  <div className="session-description">
+                    {truncate(session.customDescription, 100)}
                   </div>
                 )}
-                {session.sessionName && session.firstUserMessage && (
+                {session.firstUserMessage && (
                   <div className="session-preview">
                     {truncate(session.firstUserMessage, 120)}
                   </div>
@@ -246,11 +284,18 @@ export default function App() {
 
               <div className="session-actions">
                 <button
+                  className="edit-btn"
+                  onClick={e => openEditModal(e, session)}
+                  title="Name or describe this session"
+                >
+                  Edit
+                </button>
+                <button
                   className="clone-btn"
                   onClick={e => cloneSession(e, session)}
                   title="Open this session in a new terminal"
                 >
-                  ⎘ Clone
+                  Clone
                 </button>
               </div>
             </div>
@@ -265,7 +310,8 @@ export default function App() {
           <div className="detail-panel">
             <div className="detail-header">
               <h2>
-                {selectedSession.sessionName ||
+                {selectedSession.customName ||
+                  selectedSession.sessionName ||
                   truncate(selectedSession.firstUserMessage, 40) ||
                   selectedSession.id.slice(0, 8)}
               </h2>
@@ -274,13 +320,13 @@ export default function App() {
                   className="clone-btn"
                   onClick={e => cloneSession(e, selectedSession)}
                 >
-                  ⎘ Clone
+                  Clone
                 </button>
                 <button
                   className="close-btn"
                   onClick={() => setSelectedSession(null)}
                 >
-                  ✕
+                  x
                 </button>
               </div>
             </div>
@@ -310,11 +356,42 @@ export default function App() {
         </>
       )}
 
+      {/* Edit Modal */}
+      {editingSession && (
+        <div className="edit-modal-overlay" onClick={() => setEditingSession(null)}>
+          <div className="edit-modal" onClick={e => e.stopPropagation()}>
+            <h3>Edit Session</h3>
+            <label>Name</label>
+            <input
+              type="text"
+              placeholder="Give this session a name..."
+              value={editName}
+              onChange={e => setEditName(e.target.value)}
+              autoFocus
+            />
+            <label>Description</label>
+            <textarea
+              placeholder="Add a description or notes..."
+              value={editDescription}
+              onChange={e => setEditDescription(e.target.value)}
+            />
+            <div className="edit-modal-actions">
+              <button className="cancel-btn" onClick={() => setEditingSession(null)}>
+                Cancel
+              </button>
+              <button className="save-btn" onClick={saveSessionMeta}>
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Toast */}
       {toast && (
         <div className={`toast ${toast.type}`}>
-          {toast.type === 'success' ? '✓' : toast.type === 'error' ? '✗' : 'ℹ'}
-          {toast.message}
+          {toast.type === 'success' ? '\u2713' : toast.type === 'error' ? '\u2717' : 'i'}
+          {' '}{toast.message}
         </div>
       )}
     </div>
