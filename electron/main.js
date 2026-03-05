@@ -1,10 +1,21 @@
 const { app, BrowserWindow, shell } = require('electron');
 const path = require('path');
+const fs = require('fs');
+const os = require('os');
 const { createServer } = require('../server/index.js');
 
 let mainWindow;
 let server;
-const PORT = 31822; // Fixed port for the embedded server
+const PORT = 31822;
+const SETTINGS_FILE = path.join(os.homedir(), '.claude', 'session-manager-settings.json');
+
+function loadSettings() {
+  try {
+    return JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8'));
+  } catch {
+    return {};
+  }
+}
 
 function startServer() {
   const staticDir = path.join(__dirname, '..', 'client', 'dist');
@@ -25,16 +36,16 @@ function createWindow() {
     height: 750,
     minWidth: 800,
     minHeight: 500,
-    title: 'Claude Session Manager',
+    title: 'Session Manager',
     titleBarStyle: 'hiddenInset',
     backgroundColor: '#0a0b10',
+    icon: path.join(__dirname, '..', 'assets', 'icon.icns'),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
     },
   });
 
-  // In dev mode, load from Vite dev server; in production, load from embedded server
   const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
   if (isDev && process.env.VITE_DEV) {
     mainWindow.loadURL('http://localhost:3001');
@@ -43,7 +54,6 @@ function createWindow() {
     mainWindow.loadURL(`http://127.0.0.1:${PORT}`);
   }
 
-  // Open external links in default browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
@@ -55,6 +65,10 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  // Sync launch-at-login with saved settings
+  const settings = loadSettings();
+  app.setLoginItemSettings({ openAtLogin: !!settings.launchOnStartup });
+
   await startServer();
   createWindow();
 

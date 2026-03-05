@@ -28,6 +28,26 @@
   --glass-blur: 20px;
 }
 
+/* Light mode overrides */
+[data-theme="light"] {
+  --bg-base: #f5f5f7;
+  --bg-card: rgba(255, 255, 255, 0.85);
+  --bg-card-hover: rgba(255, 255, 255, 0.95);
+  --bg-input: rgba(0, 0, 0, 0.04);
+  --border: rgba(0, 0, 0, 0.12);
+  --border-hover: rgba(0, 0, 0, 0.2);
+  --border-active: rgba(56, 120, 240, 0.5);
+  --text-primary: #1a1a1a;
+  --text-secondary: rgba(0, 0, 0, 0.6);
+  --text-muted: rgba(0, 0, 0, 0.35);
+  --primary: hsl(211, 100%, 45%);
+  --primary-glow: rgba(56, 120, 240, 0.1);
+  --primary-dim: hsl(211, 80%, 35%);
+  --star-color: #e8930b;
+  --success: #16a34a;
+  --danger: #dc2626;
+}
+
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   background: var(--bg-base);
@@ -41,11 +61,18 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+[data-theme="light"] body {
+  background-image:
+    radial-gradient(ellipse 80% 50% at 65% -5%, rgba(56, 120, 240, 0.06), transparent),
+    radial-gradient(ellipse 50% 40% at 5% 95%, rgba(120, 80, 220, 0.04), transparent),
+    radial-gradient(ellipse 40% 30% at 90% 80%, rgba(56, 180, 240, 0.03), transparent);
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
 
 .app {
   max-width: 1200px;
@@ -202,12 +229,11 @@ body {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 18px;
-  padding: 2px;
+  font-size: 26px;
+  padding: 4px;
   color: var(--text-muted);
   transition: all 0.2s;
   flex-shrink: 0;
-  margin-top: 2px;
   -webkit-app-region: no-drag;
 }
 
@@ -294,12 +320,12 @@ body {
 }
 
 .clone-btn {
-  padding: 8px 18px;
+  padding: 12px 24px;
   background: var(--primary);
   border: none;
   border-radius: var(--radius);
   color: white;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
@@ -322,12 +348,12 @@ body {
 }
 
 .edit-btn {
-  padding: 8px 14px;
+  padding: 12px 24px;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: 15px;
   font-family: inherit;
   cursor: pointer;
   transition: all 0.2s;
@@ -337,6 +363,71 @@ body {
   color: var(--text-primary);
   background: var(--bg-card-hover);
   border-color: var(--border-hover);
+}
+
+/* Summary Buttons */
+.summary-btn {
+  padding: 8px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.summary-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-card-hover);
+  border-color: var(--border-hover);
+}
+
+.summary-btn.ai {
+  border-color: rgba(120, 80, 220, 0.3);
+  color: rgba(180, 140, 255, 0.8);
+}
+
+.summary-btn.ai:hover {
+  background: rgba(120, 80, 220, 0.15);
+  border-color: rgba(120, 80, 220, 0.5);
+  color: rgba(200, 170, 255, 1);
+}
+
+.summary-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+[data-theme="light"] .summary-btn.ai {
+  color: rgba(100, 60, 180, 0.8);
+}
+
+[data-theme="light"] .summary-btn.ai:hover {
+  background: rgba(120, 80, 220, 0.08);
+  color: rgba(80, 40, 160, 1);
+}
+
+/* Summary Modal */
+.summary-modal {
+  width: 560px;
+}
+
+.summary-text {
+  padding: 16px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  max-height: 400px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-bottom: 16px;
 }
 
 /* Session Detail Panel */
@@ -623,6 +714,86 @@ body {
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(2px);
   z-index: 99;
+}
+
+/* Settings Button */
+.settings-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  -webkit-app-region: no-drag;
+}
+
+.settings-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-card);
+}
+
+/* Terminal Options */
+.terminal-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.terminal-option {
+  padding: 12px 16px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+}
+
+.terminal-option:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+}
+
+.terminal-option.active {
+  background: var(--primary-glow);
+  border-color: var(--border-active);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+/* Light mode adjustments */
+[data-theme="light"] .session-card {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"] .session-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="light"] .clone-btn {
+  box-shadow: 0 2px 8px rgba(56, 120, 240, 0.2);
+}
+
+[data-theme="light"] .edit-modal {
+  background: rgba(255, 255, 255, 0.97);
+}
+
+[data-theme="light"] .toast {
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="light"] .project-badge {
+  background: rgba(56, 120, 240, 0.08);
+  color: rgba(56, 120, 240, 0.9);
 }
 
 /* Responsive */
