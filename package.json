@@ -1,0 +1,50 @@
+{
+  "name": "claude-session-manager",
+  "version": "1.0.0",
+  "description": "Desktop app to browse, star, and clone Claude Code sessions",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "node server/index.js",
+    "client": "cd client && npx vite --port 3001",
+    "build:client": "cd client && npx vite build",
+    "electron:dev": "concurrently \"npm run server\" \"cd client && npx vite --port 3001\" \"wait-on http://localhost:3001 && electron .\"",
+    "electron:build": "npm run build:client && electron-builder",
+    "start": "electron ."
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "electron": "^29.1.0",
+    "electron-builder": "^24.13.3",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.claude.session-manager",
+    "productName": "Claude Session Manager",
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": ["dmg", "zip"],
+      "icon": "assets/icon.icns"
+    },
+    "files": [
+      "electron/**/*",
+      "server/**/*",
+      "client/dist/**/*",
+      "node_modules/**/*",
+      "!node_modules/electron/**",
+      "!node_modules/electron-builder/**",
+      "!node_modules/@electron/**",
+      "!node_modules/vite/**",
+      "!node_modules/@vitejs/**",
+      "!client/src/**",
+      "!client/node_modules/**"
+    ],
+    "extraMetadata": {
+      "main": "electron/main.js"
+    }
+  }
+}
