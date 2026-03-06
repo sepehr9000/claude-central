@@ -4,7 +4,7 @@ Never lose a great Claude Code session again.
 
 A desktop app that gives you a visual UI for all your Claude Code sessions. Browse them, star the ones you love, and clone any session into a fresh terminal with one click.
 
-![Claude Session Manager](https://img.shields.io/badge/platform-macOS-blue) ![License](https://img.shields.io/badge/license-MIT-green) ![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)
+![Claude Session Manager](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue) ![License](https://img.shields.io/badge/license-MIT-green) ![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
 ---
 
@@ -31,7 +31,7 @@ Claude Session Manager reads your local `~/.claude/projects/` session files and 
 
 - **Node.js 18+** — [download here](https://nodejs.org)
 - **Claude Code** — the `claude` CLI must be installed and in your PATH
-- **macOS** — required for the Clone-to-Terminal feature (app browsing works on any OS)
+- **macOS, Windows, or Linux** — all features including Clone-to-Terminal work on all platforms
 
 ### Option 1: Run the Desktop App (Recommended)
 
@@ -53,14 +53,23 @@ npm start
 
 A native desktop window opens — no browser needed.
 
-### Option 2: Build a Standalone .app
+### Option 2: Build a Standalone App
 
 ```bash
 # After installing dependencies (see above)
 npm run electron:build
 ```
 
-This creates **Claude Session Manager.app** in the `dist/` folder. Drag it to your Applications folder and you're done — double-click to launch anytime.
+This creates a platform-specific installer in the `dist/` folder:
+- **macOS** → `.dmg` / `.zip` — drag to Applications
+- **Windows** → `.exe` installer (NSIS) — run to install
+- **Linux** → `.AppImage` / `.deb` — run directly or install via package manager
+
+> **Note for contributors building Windows/Linux:** You'll need icon files in `assets/`:
+> - `icon.ico` (256x256, for Windows) — convert from the existing `.icns`
+> - `icon.png` (256x256+, for Linux)
+>
+> You can generate these from the macOS `.icns` using any image converter or [iConvert Icons](https://iconverticons.com/online/).
 
 ### Option 3: Run as a Web App (no Electron)
 
@@ -68,7 +77,7 @@ This creates **Claude Session Manager.app** in the `dist/` folder. Drag it to yo
 npm run dev
 ```
 
-Opens at `http://localhost:3001`. Useful if you're on Linux/Windows or just prefer a browser.
+Opens at `http://localhost:3001`. Useful if you prefer a browser.
 
 ---
 
@@ -89,7 +98,10 @@ Opens at `http://localhost:3001`. Useful if you're on Linux/Windows or just pref
 2. **Parses** each file to extract: first user message, timestamps, message count, model used
 3. **Displays** sessions in a searchable, filterable list
 4. **Stars** are saved to `~/.claude/session-manager-stars.json`
-5. **Clone** uses `osascript` to open Terminal.app (falls back to iTerm2) running `claude --resume <session-id>` in the correct project directory
+5. **Clone** opens a terminal window running `claude --resume <session-id>` in the correct project directory
+   - **macOS**: Terminal.app, iTerm2, or Warp
+   - **Windows**: Windows Terminal, PowerShell, or Command Prompt
+   - **Linux**: GNOME Terminal, Konsole, Xfce Terminal, or xterm
 
 ---
 
@@ -135,9 +147,8 @@ npm run electron:dev
 - **Session tagging/notes** — add custom tags or notes to sessions beyond just starring
 - **Export sessions** — export a session as Markdown, PDF, or shareable link
 - **Session diff** — compare two sessions side by side
-- **Linux/Windows terminal support** — add `gnome-terminal`, `wt.exe`, etc. for the Clone feature
 - **Session grouping** — group related sessions together (e.g., all sessions for a feature branch)
-- **App icon** — we need a proper macOS app icon in `assets/`
+- **App icons** — contribute proper Windows (`.ico`) and Linux (`.png`) icons for `assets/`
 - **Auto-refresh** — watch `~/.claude/projects/` for new sessions and update the list live
 - **Keyboard shortcuts** — navigate and clone sessions without touching the mouse
 
@@ -148,7 +159,7 @@ npm run electron:dev
 | `npm run dev` | Web-only mode (Express + Vite, no Electron) |
 | `npm run electron:dev` | Full dev mode (Express + Vite + Electron with hot reload) |
 | `npm run build:client` | Build the React frontend |
-| `npm run electron:build` | Package as macOS .app / .dmg |
+| `npm run electron:build` | Package as macOS .app/.dmg, Windows .exe, or Linux .AppImage/.deb |
 | `npm start` | Launch Electron app (requires built frontend) |
 
 ### Pull Request Guidelines
@@ -179,10 +190,10 @@ A: Locally at `~/.claude/projects/{encoded-project-path}/{session-uuid}.jsonl`. 
 A: No. Everything runs locally. The app only reads files from your disk and opens local terminals.
 
 **Q: Can I use this on Linux or Windows?**
-A: The browsing/starring/searching works anywhere. The "Clone to Terminal" button currently only supports macOS (Terminal.app and iTerm2). Linux/Windows terminal support is a great contribution opportunity!
+A: Yes! All features work on macOS, Windows, and Linux — including Clone-to-Terminal. The app auto-detects your OS and shows the appropriate terminal options in Settings (e.g., Windows Terminal, GNOME Terminal, etc.).
 
 **Q: What's the Clone button do exactly?**
-A: It opens a new Terminal.app window, `cd`s into the project directory, and runs `claude --resume <session-id>`. You get a fresh Claude Code session with the full conversation history loaded.
+A: It opens a new terminal window, `cd`s into the project directory, and runs `claude --resume <session-id>`. You get a fresh Claude Code session with the full conversation history loaded.
 
 ---
 
