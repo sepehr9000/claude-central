@@ -11,6 +11,19 @@ const PROJECTS_DIR = path.join(CLAUDE_DIR, 'projects');
 const STARS_FILE = path.join(CLAUDE_DIR, 'session-manager-stars.json');
 const META_FILE = path.join(CLAUDE_DIR, 'session-manager-meta.json');
 const SETTINGS_FILE = path.join(CLAUDE_DIR, 'session-manager-settings.json');
+const CLONE_HISTORY_FILE = path.join(CLAUDE_DIR, 'session-manager-clone-history.json');
+const NOTES_FILE = path.join(CLAUDE_DIR, 'session-manager-notes.json');
+const NOTES_DIR = path.join(CLAUDE_DIR, 'session-manager-notes');
+const MEMORY_PATHS_FILE = path.join(CLAUDE_DIR, 'session-manager-memory-paths.json');
+
+function loadCloneHistory() {
+  try { return JSON.parse(fs.readFileSync(CLONE_HISTORY_FILE, 'utf-8')); }
+  catch { return []; }
+}
+
+function saveCloneHistory(history) {
+  fs.writeFileSync(CLONE_HISTORY_FILE, JSON.stringify(history, null, 2));
+}
 
 function loadStars() {
   try {
@@ -268,15 +281,193 @@ function createServer(staticDir) {
     res.json(settings);
   });
 
+  // GET /api/clone-history
+  app.get('/api/clone-history', (req, res) => {
+    res.json(loadCloneHistory());
+  });
+
+  // GET /api/notes
+  app.get('/api/notes', (req, res) => {
+    try {
+      const data = JSON.parse(fs.readFileSync(NOTES_FILE, 'utf-8'));
+      res.json(data);
+    } catch {
+      res.json({ content: '' });
+    }
+  });
+
+  // PUT /api/notes
+  app.put('/api/notes', express.json(), (req, res) => {
+    const { content, filePath } = req.body;
+    const data = { content, updatedAt: new Date().toISOString() };
+    if (filePath) data.filePath = filePath;
+    fs.writeFileSync(NOTES_FILE, JSON.stringify(data, null, 2));
+    res.json({ success: true });
+  });
+
+  // POST /api/notes/save-md — save current notes as an .md file
+  app.post('/api/notes/save-md', express.json(), (req, res) => {
+    const { content, filename } = req.body;
+    if (!fs.existsSync(NOTES_DIR)) fs.mkdirSync(NOTES_DIR, { recursive: true });
+    const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '');
+    const filePath = path.join(NOTES_DIR, safeName);
+    fs.writeFileSync(filePath, content);
+    res.json({ success: true, filename: safeName, path: filePath });
+  });
+
+  // GET /api/notes/files — list saved .md files
+  app.get('/api/notes/files', (req, res) => {
+    if (!fs.existsSync(NOTES_DIR)) return res.json({ files: [], dir: NOTES_DIR });
+    const files = fs.readdirSync(NOTES_DIR)
+      .filter(f => f.endsWith('.md'))
+      .map(f => {
+        const stat = fs.statSync(path.join(NOTES_DIR, f));
+        const kb = (stat.size / 1024).toFixed(1) + ' KB';
+        const date = stat.mtime.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        return { name: f, size: kb, date };
+      })
+      .sort((a, b) => b.name.localeCompare(a.name));
+    res.json({ files, dir: NOTES_DIR });
+  });
+
+  // GET /api/notes/files/:name — read a saved .md file
+  app.get('/api/notes/files/:name', (req, res) => {
+    const safeName = req.params.name.replace(/[^a-zA-Z0-9._-]/g, '');
+    const filePath = path.join(NOTES_DIR, safeName);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Not found' });
+    res.json({ content: fs.readFileSync(filePath, 'utf-8') });
+  });
+
+  // DELETE /api/notes/files/:name — delete a saved .md file
+  app.delete('/api/notes/files/:name', (req, res) => {
+    const safeName = req.params.name.replace(/[^a-zA-Z0-9._-]/g, '');
+    const filePath = path.join(NOTES_DIR, safeName);
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    res.json({ success: true });
+  });
+
+  // GET /api/memory/paths — get saved root paths
+  app.get('/api/memory/paths', (req, res) => {
+    try {
+      const paths = JSON.parse(fs.readFileSync(MEMORY_PATHS_FILE, 'utf-8'));
+      res.json({ paths });
+    } catch {
+      res.json({ paths: [] });
+    }
+  });
+
+  // POST /api/memory/paths — add a root path
+  app.post('/api/memory/paths', express.json(), (req, res) => {
+    const { path: newPath } = req.body;
+    if (!newPath || !fs.existsSync(newPath)) return res.status(400).json({ error: 'Invalid path' });
+    let paths = [];
+    try { paths = JSON.parse(fs.readFileSync(MEMORY_PATHS_FILE, 'utf-8')); } catch {}
+    if (!paths.includes(newPath)) paths.push(newPath);
+    fs.writeFileSync(MEMORY_PATHS_FILE, JSON.stringify(paths, null, 2));
+    res.json({ paths });
+  });
+
+  // DELETE /api/memory/paths — remove a root path
+  app.delete('/api/memory/paths', express.json(), (req, res) => {
+    const { path: rmPath } = req.body;
+    let paths = [];
+    try { paths = JSON.parse(fs.readFileSync(MEMORY_PATHS_FILE, 'utf-8')); } catch {}
+    paths = paths.filter(p => p !== rmPath);
+    fs.writeFileSync(MEMORY_PATHS_FILE, JSON.stringify(paths, null, 2));
+    res.json({ paths });
+  });
+
+  // Check if a directory contains .md files (up to 3 levels deep)
+  function hasMdFiles(dirPath, depth = 0) {
+    if (depth > 3) return false;
+    try {
+      const items = fs.readdirSync(dirPath, { withFileTypes: true });
+      for (const item of items) {
+        if (item.name.startsWith('.')) continue;
+        if (item.isFile() && item.name.endsWith('.md')) return true;
+        if (item.isDirectory() && hasMdFiles(path.join(dirPath, item.name), depth + 1)) return true;
+      }
+    } catch {}
+    return false;
+  }
+
+  // GET /api/memory/browse — list dirs (with .md files) and .md files at a path
+  app.get('/api/memory/browse', (req, res) => {
+    const dir = req.query.path;
+    if (!dir || !fs.existsSync(dir)) return res.status(400).json({ error: 'Invalid path' });
+    try {
+      const stat = fs.statSync(dir);
+      if (!stat.isDirectory()) return res.status(400).json({ error: 'Not a directory' });
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      const dirs = entries
+        .filter(e => e.isDirectory() && !e.name.startsWith('.'))
+        .filter(e => hasMdFiles(path.join(dir, e.name)))
+        .map(e => ({ name: e.name, type: 'dir', path: path.join(dir, e.name) }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      const files = entries
+        .filter(e => e.isFile() && e.name.endsWith('.md'))
+        .map(e => {
+          const s = fs.statSync(path.join(dir, e.name));
+          return { name: e.name, type: 'file', path: path.join(dir, e.name), size: s.size, modified: s.mtime };
+        })
+        .sort((a, b) => a.name.localeCompare(b.name));
+      res.json({ entries: [...dirs, ...files], current: dir, parent: path.dirname(dir) });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/memory/file — read an .md file
+  app.get('/api/memory/file', (req, res) => {
+    const filePath = req.query.path;
+    if (!filePath || !fs.existsSync(filePath)) return res.status(404).json({ error: 'Not found' });
+    res.json({ content: fs.readFileSync(filePath, 'utf-8'), path: filePath });
+  });
+
+  // PUT /api/memory/file — save an .md file
+  app.put('/api/memory/file', express.json(), (req, res) => {
+    const { path: filePath, content } = req.body;
+    if (!filePath) return res.status(400).json({ error: 'No path' });
+    fs.writeFileSync(filePath, content);
+    res.json({ success: true });
+  });
+
+  // POST /api/clone-history/:index/meta — update a clone entry's name/description
+  app.post('/api/clone-history/:index/meta', (req, res) => {
+    const idx = parseInt(req.params.index, 10);
+    const { name, description } = req.body;
+    const history = loadCloneHistory();
+    if (idx < 0 || idx >= history.length) return res.status(404).json({ error: 'Not found' });
+    if (name !== undefined) history[idx].customName = name || undefined;
+    if (description !== undefined) history[idx].customDescription = description || undefined;
+    saveCloneHistory(history);
+    res.json({ success: true });
+  });
+
+    // GET /api/active-sessions — check which sessions have running claude processes
+  app.get('/api/active-sessions', (req, res) => {
+    exec('ps aux', (err, stdout) => {
+      if (err) return res.json({ activeIds: [] });
+      const lines = stdout.split('\n');
+      const activeIds = [];
+      for (const line of lines) {
+        const match = line.match(/claude\s+.*--resume\s+([a-f0-9-]{36})/);
+        if (match) activeIds.push(match[1]);
+      }
+      res.json({ activeIds: [...new Set(activeIds)] });
+    });
+  });
+
   // POST /api/sessions/:id/clone
   app.post('/api/sessions/:id/clone', (req, res) => {
     const { id } = req.params;
-    const { projectPath } = req.body;
+    const { projectPath, sessionName } = req.body;
     const settings = loadSettings();
     const terminal = settings.terminal || 'default';
 
+    const tabTitle = (sessionName || id.slice(0, 8)).replace(/"/g, '\\"').replace(/'/g, '');
     const cdCmd = projectPath ? `cd ${projectPath.replace(/'/g, "'\\''")} && ` : '';
-    const claudeCmd = `${cdCmd}unset CLAUDECODE && claude --resume ${id}`;
+    const claudeCmd = `${cdCmd}unset CLAUDECODE && claude --dangerously-skip-permissions --resume ${id}`;
     const escapedCmd = claudeCmd.replace(/"/g, '\\"');
 
     function tryTerminal(terminalApp, fallback) {
@@ -287,12 +478,12 @@ function createServer(staticDir) {
             activate
             create window with default profile
             tell current session of current window
+              set name to "${tabTitle}"
               write text "${escapedCmd}"
             end tell
           end tell
         `;
       } else if (terminalApp === 'warp') {
-        // Warp uses standard "do script" like Terminal.app
         script = `
           tell application "Warp"
             activate
@@ -315,8 +506,80 @@ function createServer(staticDir) {
           console.error('Failed to open terminal:', err);
           res.status(500).json({
             error: 'Failed to open terminal',
-            command: `claude --resume ${id}`,
+            command: `claude --dangerously-skip-permissions --resume ${id}`,
           });
+        } else {
+          const names = { terminal: 'Terminal.app', iterm2: 'iTerm2', warp: 'Warp' };
+          // Record clone history
+          const history = loadCloneHistory();
+          history.unshift({
+            sessionId: id,
+            sessionName: sessionName || null,
+            projectPath: projectPath || null,
+            clonedAt: new Date().toISOString(),
+            terminal: names[terminalApp] || terminalApp,
+          });
+          // Keep last 200 entries
+          saveCloneHistory(history.slice(0, 200));
+          res.json({ success: true, terminal: names[terminalApp] || terminalApp });
+        }
+      });
+    }
+
+    if (terminal === 'iterm2') {
+      tryTerminal('iterm2', () => tryTerminal('terminal', null));
+    } else if (terminal === 'warp') {
+      tryTerminal('warp', () => tryTerminal('terminal', null));
+    } else if (terminal === 'default') {
+      // Try Terminal.app first, fall back to iTerm2
+      tryTerminal('terminal', () => tryTerminal('iterm2', null));
+    } else {
+      tryTerminal('terminal', null);
+    }
+  });
+
+  // POST /api/new-session — launch a brand new claude session
+  app.post('/api/new-session', (req, res) => {
+    const { projectPath } = req.body || {};
+    const settings = loadSettings();
+    const terminal = settings.terminal || 'default';
+    const cdCmd = projectPath ? `cd ${projectPath.replace(/'/g, "'\\''")} && ` : '';
+    const claudeCmd = `${cdCmd}unset CLAUDECODE && claude --dangerously-skip-permissions`;
+    const escapedCmd = claudeCmd.replace(/"/g, '\\"');
+
+    function tryTerminal(terminalApp, fallback) {
+      let script;
+      if (terminalApp === 'iterm2') {
+        script = `
+          tell application "iTerm2"
+            activate
+            create window with default profile
+            tell current session of current window
+              write text "${escapedCmd}"
+            end tell
+          end tell
+        `;
+      } else if (terminalApp === 'warp') {
+        script = `
+          tell application "Warp"
+            activate
+            do script "${escapedCmd}"
+          end tell
+        `;
+      } else {
+        script = `
+          tell application "Terminal"
+            activate
+            do script "${escapedCmd}"
+          end tell
+        `;
+      }
+
+      exec(`osascript -e '${script.replace(/'/g, "'\\''")}'`, (err) => {
+        if (err && fallback) {
+          fallback();
+        } else if (err) {
+          res.status(500).json({ error: 'Failed to open terminal' });
         } else {
           const names = { terminal: 'Terminal.app', iterm2: 'iTerm2', warp: 'Warp' };
           res.json({ success: true, terminal: names[terminalApp] || terminalApp });
@@ -329,7 +592,6 @@ function createServer(staticDir) {
     } else if (terminal === 'warp') {
       tryTerminal('warp', () => tryTerminal('terminal', null));
     } else if (terminal === 'default') {
-      // Try Terminal.app first, fall back to iTerm2
       tryTerminal('terminal', () => tryTerminal('iterm2', null));
     } else {
       tryTerminal('terminal', null);

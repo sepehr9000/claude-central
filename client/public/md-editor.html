@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Editor</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px 10px 80px;
+    background: #12122a;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    -webkit-app-region: drag;
+    user-select: none;
+    flex-shrink: 0;
+  }
+
+  .titlebar-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .titlebar h1 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #a0a0c0;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
+
+  .file-path {
+    font-size: 11px;
+    color: #505070;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+
+  .titlebar-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    -webkit-app-region: no-drag;
+    flex-shrink: 0;
+  }
+
+  .save-status {
+    font-size: 11px;
+    color: #606080;
+    transition: color 0.3s;
+  }
+  .save-status.saving { color: #f0c040; }
+  .save-status.saved { color: #40c080; }
+
+  .titlebar-actions button {
+    background: none;
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #808098;
+    cursor: pointer;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .titlebar-actions button:hover {
+    background: rgba(255,255,255,0.06);
+    color: #c0c0d8;
+    border-color: rgba(255,255,255,0.15);
+  }
+
+  .editor {
+    flex: 1;
+    padding: 20px 24px;
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.7;
+    color: #d0d0e8;
+    background: #1a1a2e;
+    border: none;
+    outline: none;
+    resize: none;
+    tab-size: 2;
+    overflow-y: auto;
+  }
+
+  .editor::placeholder {
+    color: #353555;
+  }
+
+  .editor::-webkit-scrollbar { width: 6px; }
+  .editor::-webkit-scrollbar-track { background: transparent; }
+  .editor::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+  .editor::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+</style>
+</head>
+<body>
+  <div class="titlebar">
+    <div class="titlebar-left">
+      <h1 id="fileName">Editor</h1>
+      <span class="file-path" id="filePath"></span>
+    </div>
+    <div class="titlebar-actions">
+      <span class="save-status" id="saveStatus"></span>
+      <button onclick="saveFile()" title="Save (Cmd+S)">Save</button>
+    </div>
+  </div>
+
+  <textarea class="editor" id="editor" spellcheck="false" placeholder="Empty file"></textarea>
+
+  <script>
+    const editor = document.getElementById('editor');
+    const saveStatus = document.getElementById('saveStatus');
+    const fileNameEl = document.getElementById('fileName');
+    const filePathEl = document.getElementById('filePath');
+
+    // Get file path from URL params
+    const params = new URLSearchParams(window.location.search);
+    const filePath = params.get('path');
+
+    if (filePath) {
+      const name = filePath.split('/').pop();
+      fileNameEl.textContent = name;
+      filePathEl.textContent = filePath;
+      filePathEl.title = filePath;
+      document.title = name;
+
+      // Load file content
+      fetch('/api/memory/file?path=' + encodeURIComponent(filePath))
+        .then(r => r.json())
+        .then(data => {
+          editor.value = data.content || '';
+        })
+        .catch(() => {
+          editor.value = '// Failed to load file';
+        });
+    }
+
+    function saveFile() {
+      if (!filePath) return;
+      saveStatus.textContent = 'Saving...';
+      saveStatus.className = 'save-status saving';
+
+      fetch('/api/memory/file', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: filePath, content: editor.value }),
+      })
+        .then(r => r.json())
+        .then(data => {
+          if (data.success) {
+            saveStatus.textContent = 'Saved';
+            saveStatus.className = 'save-status saved';
+            setTimeout(() => {
+              if (saveStatus.textContent === 'Saved') saveStatus.textContent = '';
+            }, 2000);
+          } else {
+            saveStatus.textContent = 'Save failed';
+            saveStatus.className = 'save-status';
+          }
+        })
+        .catch(() => {
+          saveStatus.textContent = 'Save failed';
+          saveStatus.className = 'save-status';
+        });
+    }
+
+    // Keyboard shortcuts
+    editor.addEventListener('keydown', (e) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key === 's') {
+        e.preventDefault();
+        saveFile();
+      }
+      // Tab key inserts spaces
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const start = editor.selectionStart;
+        const end = editor.selectionEnd;
+        editor.value = editor.value.substring(0, start) + '  ' + editor.value.substring(end);
+        editor.selectionStart = editor.selectionEnd = start + 2;
+      }
+    });
+  </script>
+</body>
+</html>

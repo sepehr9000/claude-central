@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Notes</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px 10px 80px;
+    background: #12122a;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    -webkit-app-region: drag;
+    user-select: none;
+    flex-shrink: 0;
+  }
+
+  .titlebar-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .titlebar h1 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #a0a0c0;
+    letter-spacing: 0.5px;
+  }
+
+  .file-label {
+    font-size: 11px;
+    color: #505070;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .titlebar-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    -webkit-app-region: no-drag;
+  }
+
+  .save-status {
+    font-size: 11px;
+    color: #606080;
+    transition: color 0.3s;
+  }
+  .save-status.saving { color: #f0c040; }
+  .save-status.saved { color: #40c080; }
+
+  .titlebar-actions button {
+    background: none;
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #808098;
+    cursor: pointer;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .titlebar-actions button:hover {
+    background: rgba(255,255,255,0.06);
+    color: #c0c0d8;
+    border-color: rgba(255,255,255,0.15);
+  }
+
+  .editor {
+    flex: 1;
+    padding: 20px 24px;
+    font-size: 14px;
+    line-height: 1.7;
+    color: #d0d0e8;
+    outline: none;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+
+  .editor:empty::before {
+    content: 'Start typing your notes...\A\ACmnd+B  Bold\ACmnd+I  Italic\ACmnd+U  Underline\ACmnd+S  Save to file';
+    color: #353555;
+    pointer-events: none;
+    white-space: pre-wrap;
+  }
+
+  .editor b, .editor strong { color: #e8e8ff; }
+  .editor i, .editor em { color: #c8c8f0; }
+
+  .editor ul, .editor ol { padding-left: 24px; margin: 4px 0; }
+
+  .editor code {
+    background: rgba(255,255,255,0.06);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: 'SF Mono', Menlo, monospace;
+    font-size: 13px;
+  }
+
+  .editor::-webkit-scrollbar { width: 6px; }
+  .editor::-webkit-scrollbar-track { background: transparent; }
+  .editor::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+  .editor::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+</style>
+</head>
+<body>
+  <div class="titlebar">
+    <div class="titlebar-left">
+      <h1>Notes</h1>
+      <span class="file-label" id="fileLabel"></span>
+    </div>
+    <div class="titlebar-actions">
+      <span class="save-status" id="saveStatus"></span>
+      <button onclick="saveToFile()" title="Save to file (Cmd+S)">Save</button>
+      <button onclick="saveAs()" title="Save as new file">Save As</button>
+    </div>
+  </div>
+
+  <div class="editor" id="editor" contenteditable="true" spellcheck="true"></div>
+
+  <script>
+    const editor = document.getElementById('editor');
+    const saveStatus = document.getElementById('saveStatus');
+    const fileLabel = document.getElementById('fileLabel');
+    let autoSaveTimer = null;
+    let loaded = false;
+    let currentFilePath = null; // remembers the file path after first save
+
+    // Load notes from autosave store
+    fetch('/api/notes')
+      .then(r => r.json())
+      .then(data => {
+        if (data.content) editor.innerHTML = data.content;
+        if (data.filePath) {
+          currentFilePath = data.filePath;
+          fileLabel.textContent = currentFilePath.split('/').pop();
+          fileLabel.title = currentFilePath;
+        }
+        loaded = true;
+      })
+      .catch(() => { loaded = true; });
+
+    // Autosave to internal store on every edit
+    editor.addEventListener('input', () => {
+      if (!loaded) return;
+      clearTimeout(autoSaveTimer);
+      autoSaveTimer = setTimeout(autoSave, 800);
+    });
+
+    function autoSave() {
+      fetch('/api/notes', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: editor.innerHTML, filePath: currentFilePath }),
+      }).catch(() => {});
+    }
+
+    // Convert HTML to markdown
+    function htmlToMarkdown(html) {
+      const tmp = document.createElement('div');
+      tmp.innerHTML = html;
+
+      function walk(node) {
+        let md = '';
+        for (const child of node.childNodes) {
+          if (child.nodeType === 3) {
+            md += child.textContent;
+          } else if (child.nodeType === 1) {
+            const tag = child.tagName.toLowerCase();
+            const inner = walk(child);
+            if (tag === 'b' || tag === 'strong') md += '**' + inner + '**';
+            else if (tag === 'i' || tag === 'em') md += '_' + inner + '_';
+            else if (tag === 'u') md += '__' + inner + '__';
+            else if (tag === 's' || tag === 'strike' || tag === 'del') md += '~~' + inner + '~~';
+            else if (tag === 'code') md += '`' + inner + '`';
+            else if (tag === 'h1') md += '\n# ' + inner + '\n';
+            else if (tag === 'h2') md += '\n## ' + inner + '\n';
+            else if (tag === 'h3') md += '\n### ' + inner + '\n';
+            else if (tag === 'li') md += '- ' + inner + '\n';
+            else if (tag === 'ul' || tag === 'ol') md += '\n' + inner;
+            else if (tag === 'blockquote') md += '\n> ' + inner.replace(/\n/g, '\n> ') + '\n';
+            else if (tag === 'br') md += '\n';
+            else if (tag === 'div' || tag === 'p') md += inner + '\n';
+            else if (tag === 'hr') md += '\n---\n';
+            else md += inner;
+          }
+        }
+        return md;
+      }
+
+      return walk(tmp).replace(/\n{3,}/g, '\n\n').trim();
+    }
+
+    // Save to file — if no path yet, show native dialog. Otherwise save directly.
+    async function saveToFile() {
+      const md = htmlToMarkdown(editor.innerHTML);
+
+      if (!currentFilePath) {
+        return saveAs();
+      }
+
+      // Save to existing path
+      saveStatus.textContent = 'Saving...';
+      saveStatus.className = 'save-status saving';
+      const result = await window.notesAPI.saveFile(currentFilePath, md);
+      if (result.success) {
+        saveStatus.textContent = 'Saved';
+        saveStatus.className = 'save-status saved';
+        autoSave(); // persist filePath
+        setTimeout(() => { if (saveStatus.textContent === 'Saved') saveStatus.textContent = ''; }, 2000);
+      } else {
+        saveStatus.textContent = 'Save failed';
+        saveStatus.className = 'save-status';
+      }
+    }
+
+    // Save As — always show native dialog
+    async function saveAs() {
+      const md = htmlToMarkdown(editor.innerHTML);
+
+      saveStatus.textContent = 'Saving...';
+      saveStatus.className = 'save-status saving';
+      const result = await window.notesAPI.saveFileDialog(md);
+
+      if (result.canceled) {
+        saveStatus.textContent = '';
+        saveStatus.className = 'save-status';
+        return;
+      }
+
+      currentFilePath = result.filePath;
+      fileLabel.textContent = currentFilePath.split('/').pop();
+      fileLabel.title = currentFilePath;
+      saveStatus.textContent = 'Saved';
+      saveStatus.className = 'save-status saved';
+      autoSave(); // persist filePath
+      setTimeout(() => { if (saveStatus.textContent === 'Saved') saveStatus.textContent = ''; }, 2000);
+    }
+
+    // Keyboard shortcuts
+    editor.addEventListener('keydown', (e) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key === 's') {
+        e.preventDefault();
+        saveToFile();
+      }
+    });
+
+    // Autosave before closing
+    window.addEventListener('beforeunload', () => {
+      clearTimeout(autoSaveTimer);
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', '/api/notes', false);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.send(JSON.stringify({ content: editor.innerHTML, filePath: currentFilePath }));
+    });
+  </script>
+</body>
+</html>
