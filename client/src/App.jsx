@@ -24,6 +24,30 @@ function truncate(str, len) {
   return str.length > len ? str.slice(0, len) + '...' : str;
 }
 
+function getTerminalOptions(platform) {
+  if (platform === 'win32') {
+    return [
+      { value: 'default', label: 'Default (Windows Terminal)' },
+      { value: 'powershell', label: 'PowerShell' },
+      { value: 'cmd', label: 'Command Prompt' },
+    ];
+  } else if (platform === 'linux') {
+    return [
+      { value: 'default', label: 'Default (auto-detect)' },
+      { value: 'gnome-terminal', label: 'GNOME Terminal' },
+      { value: 'konsole', label: 'Konsole' },
+      { value: 'xfce4-terminal', label: 'Xfce Terminal' },
+      { value: 'xterm', label: 'xterm' },
+    ];
+  }
+  // macOS
+  return [
+    { value: 'default', label: 'Default (Terminal.app)' },
+    { value: 'iterm2', label: 'iTerm2' },
+    { value: 'warp', label: 'Warp' },
+  ];
+}
+
 export default function App() {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -40,6 +64,7 @@ export default function App() {
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [summaryModal, setSummaryModal] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
+  const [platform, setPlatform] = useState('darwin');
   const [activeSessionIds, setActiveSessionIds] = useState([]);
   const [showProjectPicker, setShowProjectPicker] = useState(false);
   const [memoryPaths, setMemoryPaths] = useState([]);
@@ -56,6 +81,7 @@ export default function App() {
     fetchSettings();
     fetchActiveSessions();
     fetchCloneHistory();
+    fetch('/api/platform').then(r => r.json()).then(d => setPlatform(d.platform)).catch(() => {});
     const interval = setInterval(fetchActiveSessions, 5000);
     return () => clearInterval(interval);
   }, []);
@@ -535,8 +561,8 @@ export default function App() {
                     </button>
                     <div className="session-info" style={{ cursor: 'default' }}>
                       <div className="session-header">
-                        {isActive && <span className="active-dot" title="Running in terminal" />}
                         <span className="session-name">{frozenName}</span>
+                        {isActive && <span className="active-badge" title="Running in terminal"><span className="active-dot" />LIVE</span>}
                         <span className="history-count">{clones.length} clone{clones.length !== 1 ? 's' : ''}</span>
                       </div>
                       <div className="session-meta">
@@ -733,12 +759,12 @@ export default function App() {
 
               <div className="session-info">
                 <div className="session-header">
-                  {activeSessionIds.includes(session.id) && (
-                    <span className="active-dot" title="Running in terminal" />
-                  )}
                   <span className="session-name">
                     {session.customName || session.sessionName || truncate(session.firstUserMessage, 60) || session.id.slice(0, 8)}
                   </span>
+                  {activeSessionIds.includes(session.id) && (
+                    <span className="active-badge" title="Running in terminal"><span className="active-dot" />LIVE</span>
+                  )}
                 </div>
                 <div className="session-meta">
                   <span className="project-badge" title={session.projectPath}>
@@ -825,11 +851,7 @@ export default function App() {
             <h3>Settings</h3>
             <label>Terminal Application</label>
             <div className="terminal-options">
-              {[
-                { value: 'default', label: 'Default (Terminal.app)' },
-                { value: 'iterm2', label: 'iTerm2' },
-                { value: 'warp', label: 'Warp' },
-              ].map(opt => (
+              {getTerminalOptions(platform).map(opt => (
                 <button
                   key={opt.value}
                   className={`terminal-option ${settings.terminal === opt.value ? 'active' : ''}`}

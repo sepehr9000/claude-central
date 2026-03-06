@@ -446,7 +446,11 @@ function createServer(staticDir) {
 
     // GET /api/active-sessions — check which sessions have running claude processes
   app.get('/api/active-sessions', (req, res) => {
-    exec('ps aux', (err, stdout) => {
+    const cmd = process.platform === 'win32'
+      ? 'wmic process where "name like \'%claude%\'" get commandline 2>nul || tasklist /v /fi "imagename eq claude*" 2>nul'
+      : 'ps aux';
+
+    exec(cmd, (err, stdout) => {
       if (err) return res.json({ activeIds: [] });
       const lines = stdout.split('\n');
       const activeIds = [];
@@ -458,6 +462,114 @@ function createServer(staticDir) {
     });
   });
 
+  // Cross-platform terminal launcher helper
+  function launchInTerminal(claudeCmd, terminalPref, tabTitle, callback) {
+    const platform = process.platform;
+
+    if (platform === 'darwin') {
+      // macOS: use osascript
+      const escapedCmd = claudeCmd.replace(/"/g, '\\"');
+
+      function tryMacTerminal(terminalApp, fallback) {
+        let script;
+        if (terminalApp === 'iterm2') {
+          script = `
+            tell application "iTerm2"
+              activate
+              create window with default profile
+              tell current session of current window
+                set name to "${(tabTitle || '').replace(/"/g, '\\"')}"
+                write text "${escapedCmd}"
+              end tell
+            end tell
+          `;
+        } else if (terminalApp === 'warp') {
+          script = `
+            tell application "Warp"
+              activate
+              do script "${escapedCmd}"
+            end tell
+          `;
+        } else {
+          script = `
+            tell application "Terminal"
+              activate
+              do script "${escapedCmd}"
+            end tell
+          `;
+        }
+
+        exec(`osascript -e '${script.replace(/'/g, "'\\''")}'`, (err) => {
+          if (err && fallback) fallback();
+          else callback(err, terminalApp);
+        });
+      }
+
+      if (terminalPref === 'iterm2') {
+        tryMacTerminal('iterm2', () => tryMacTerminal('terminal', null));
+      } else if (terminalPref === 'warp') {
+        tryMacTerminal('warp', () => tryMacTerminal('terminal', null));
+      } else {
+        tryMacTerminal('terminal', () => tryMacTerminal('iterm2', null));
+      }
+
+    } else if (platform === 'win32') {
+      // Windows: try Windows Terminal, fall back to cmd.exe
+      const escapedCmd = claudeCmd.replace(/"/g, '""');
+
+      if (terminalPref === 'powershell') {
+        exec(`start powershell -NoExit -Command "${escapedCmd}"`, (err) => {
+          callback(err, 'powershell');
+        });
+      } else if (terminalPref === 'cmd') {
+        exec(`start cmd.exe /k "${escapedCmd}"`, (err) => {
+          callback(err, 'cmd');
+        });
+      } else {
+        // Default: try Windows Terminal first, fall back to cmd
+        exec(`wt.exe -d . cmd /k "${escapedCmd}"`, (err) => {
+          if (err) {
+            exec(`start cmd.exe /k "${escapedCmd}"`, (err2) => {
+              callback(err2, 'cmd');
+            });
+          } else {
+            callback(null, 'windows-terminal');
+          }
+        });
+      }
+
+    } else {
+      // Linux: try common terminal emulators
+      const terminals = [
+        { name: 'gnome-terminal', cmd: `gnome-terminal -- bash -c '${claudeCmd.replace(/'/g, "'\\''")}; exec bash'` },
+        { name: 'konsole', cmd: `konsole -e bash -c '${claudeCmd.replace(/'/g, "'\\''")}; exec bash'` },
+        { name: 'xfce4-terminal', cmd: `xfce4-terminal -e "bash -c '${claudeCmd.replace(/'/g, "'\\''")}; exec bash'"` },
+        { name: 'xterm', cmd: `xterm -e bash -c '${claudeCmd.replace(/'/g, "'\\''")}; exec bash'` },
+      ];
+
+      if (terminalPref && terminalPref !== 'default') {
+        const match = terminals.find(t => t.name === terminalPref);
+        if (match) {
+          exec(match.cmd, (err) => callback(err, match.name));
+          return;
+        }
+      }
+
+      // Try each terminal until one works
+      function tryNext(i) {
+        if (i >= terminals.length) {
+          callback(new Error('No terminal emulator found'), null);
+          return;
+        }
+        exec(terminals[i].cmd, (err) => {
+          if (err) tryNext(i + 1);
+          else callback(null, terminals[i].name);
+        });
+      }
+      tryNext(0);
+    }
+  }
+
   // POST /api/sessions/:id/clone
   app.post('/api/sessions/:id/clone', (req, res) => {
     const { id } = req.params;
@@ -466,76 +578,39 @@ function createServer(staticDir) {
     const terminal = settings.terminal || 'default';
 
     const tabTitle = (sessionName || id.slice(0, 8)).replace(/"/g, '\\"').replace(/'/g, '');
+    const projLabel = projectPath ? projectPath.split('/').filter(Boolean).pop() : '';
+    const termTitle = projLabel ? `${projLabel}: ${tabTitle}` : tabTitle;
     const cdCmd = projectPath ? `cd ${projectPath.replace(/'/g, "'\\''")} && ` : '';
-    const claudeCmd = `${cdCmd}unset CLAUDECODE && claude --dangerously-skip-permissions --resume ${id}`;
-    const escapedCmd = claudeCmd.replace(/"/g, '\\"');
+    // Set terminal tab title via ANSI escape codes (works in all terminals)
+    const titleEsc = `printf '\\033]0;${termTitle.replace(/'/g, "\\'")}\\007' && `;
+    const claudeCmd = `${cdCmd}${titleEsc}unset CLAUDECODE && claude --dangerously-skip-permissions --resume ${id}`;
 
-    function tryTerminal(terminalApp, fallback) {
-      let script;
-      if (terminalApp === 'iterm2') {
-        script = `
-          tell application "iTerm2"
-            activate
-            create window with default profile
-            tell current session of current window
-              set name to "${tabTitle}"
-              write text "${escapedCmd}"
-            end tell
-          end tell
-        `;
-      } else if (terminalApp === 'warp') {
-        script = `
-          tell application "Warp"
-            activate
-            do script "${escapedCmd}"
-          end tell
-        `;
+    const terminalNames = {
+      terminal: 'Terminal.app', iterm2: 'iTerm2', warp: 'Warp',
+      'windows-terminal': 'Windows Terminal', cmd: 'Command Prompt', powershell: 'PowerShell',
+      'gnome-terminal': 'GNOME Terminal', konsole: 'Konsole', 'xfce4-terminal': 'Xfce Terminal', xterm: 'xterm',
+    };
+
+    launchInTerminal(claudeCmd, terminal, tabTitle, (err, usedTerminal) => {
+      if (err) {
+        console.error('Failed to open terminal:', err);
+        res.status(500).json({
+          error: 'Failed to open terminal',
+          command: `claude --dangerously-skip-permissions --resume ${id}`,
+        });
       } else {
-        script = `
-          tell application "Terminal"
-            activate
-            do script "${escapedCmd}"
-          end tell
-        `;
+        const history = loadCloneHistory();
+        history.unshift({
+          sessionId: id,
+          sessionName: sessionName || null,
+          projectPath: projectPath || null,
+          clonedAt: new Date().toISOString(),
+          terminal: terminalNames[usedTerminal] || usedTerminal,
+        });
+        saveCloneHistory(history.slice(0, 200));
+        res.json({ success: true, terminal: terminalNames[usedTerminal] || usedTerminal });
       }
-
-      exec(`osascript -e '${script.replace(/'/g, "'\\''")}'`, (err) => {
-        if (err && fallback) {
-          fallback();
-        } else if (err) {
-          console.error('Failed to open terminal:', err);
-          res.status(500).json({
-            error: 'Failed to open terminal',
-            command: `claude --dangerously-skip-permissions --resume ${id}`,
-          });
-        } else {
-          const names = { terminal: 'Terminal.app', iterm2: 'iTerm2', warp: 'Warp' };
-          // Record clone history
-          const history = loadCloneHistory();
-          history.unshift({
-            sessionId: id,
-            sessionName: sessionName || null,
-            projectPath: projectPath || null,
-            clonedAt: new Date().toISOString(),
-            terminal: names[terminalApp] || terminalApp,
-          });
-          // Keep last 200 entries
-          saveCloneHistory(history.slice(0, 200));
-          res.json({ success: true, terminal: names[terminalApp] || terminalApp });
-        }
-      });
-    }
-
-    if (terminal === 'iterm2') {
-      tryTerminal('iterm2', () => tryTerminal('terminal', null));
-    } else if (terminal === 'warp') {
-      tryTerminal('warp', () => tryTerminal('terminal', null));
-    } else if (terminal === 'default') {
-      // Try Terminal.app first, fall back to iTerm2
-      tryTerminal('terminal', () => tryTerminal('iterm2', null));
-    } else {
-      tryTerminal('terminal', null);
-    }
+    });
   });
 
   // POST /api/new-session — launch a brand new claude session
@@ -544,58 +619,22 @@ function createServer(staticDir) {
     const settings = loadSettings();
     const terminal = settings.terminal || 'default';
     const cdCmd = projectPath ? `cd ${projectPath.replace(/'/g, "'\\''")} && ` : '';
-    const claudeCmd = `${cdCmd}unset CLAUDECODE && claude --dangerously-skip-permissions`;
-    const escapedCmd = claudeCmd.replace(/"/g, '\\"');
+    const projLabel = projectPath ? projectPath.split('/').filter(Boolean).pop() : 'Claude';
+    const titleEsc = `printf '\\033]0;${projLabel}: New Session\\007' && `;
+    const claudeCmd = `${cdCmd}${titleEsc}unset CLAUDECODE && claude --dangerously-skip-permissions`;
 
-    function tryTerminal(terminalApp, fallback) {
-      let script;
-      if (terminalApp === 'iterm2') {
-        script = `
-          tell application "iTerm2"
-            activate
-            create window with default profile
-            tell current session of current window
-              write text "${escapedCmd}"
-            end tell
-          end tell
-        `;
-      } else if (terminalApp === 'warp') {
-        script = `
-          tell application "Warp"
-            activate
-            do script "${escapedCmd}"
-          end tell
-        `;
+    launchInTerminal(claudeCmd, terminal, 'New Session', (err, usedTerminal) => {
+      if (err) {
+        res.status(500).json({ error: 'Failed to open terminal' });
       } else {
-        script = `
-          tell application "Terminal"
-            activate
-            do script "${escapedCmd}"
-          end tell
-        `;
+        res.json({ success: true, terminal: usedTerminal });
       }
+    });
+  });
 
-      exec(`osascript -e '${script.replace(/'/g, "'\\''")}'`, (err) => {
-        if (err && fallback) {
-          fallback();
-        } else if (err) {
-          res.status(500).json({ error: 'Failed to open terminal' });
-        } else {
-          const names = { terminal: 'Terminal.app', iterm2: 'iTerm2', warp: 'Warp' };
-          res.json({ success: true, terminal: names[terminalApp] || terminalApp });
-        }
-      });
-    }
-
-    if (terminal === 'iterm2') {
-      tryTerminal('iterm2', () => tryTerminal('terminal', null));
-    } else if (terminal === 'warp') {
-      tryTerminal('warp', () => tryTerminal('terminal', null));
-    } else if (terminal === 'default') {
-      tryTerminal('terminal', () => tryTerminal('iterm2', null));
-    } else {
-      tryTerminal('terminal', null);
-    }
+  // GET /api/platform
+  app.get('/api/platform', (req, res) => {
+    res.json({ platform: process.platform });
   });
 
   // GET /api/version
@@ -623,14 +662,27 @@ function createServer(staticDir) {
           const release = JSON.parse(data);
           const latestVersion = (release.tag_name || '').replace(/^v/, '');
           const hasUpdate = latestVersion && latestVersion !== currentVersion;
-          const dmgAsset = (release.assets || []).find(a => a.name.endsWith('.dmg'));
-          const zipAsset = (release.assets || []).find(a => a.name.endsWith('.zip'));
+          const assets = release.assets || [];
+          let downloadUrl = release.html_url || '';
+          if (process.platform === 'win32') {
+            const exe = assets.find(a => a.name.endsWith('.exe'));
+            const zip = assets.find(a => a.name.endsWith('.zip') && /win/i.test(a.name));
+            downloadUrl = exe?.browser_download_url || zip?.browser_download_url || downloadUrl;
+          } else if (process.platform === 'linux') {
+            const appImage = assets.find(a => a.name.endsWith('.AppImage'));
+            const deb = assets.find(a => a.name.endsWith('.deb'));
+            downloadUrl = appImage?.browser_download_url || deb?.browser_download_url || downloadUrl;
+          } else {
+            const dmg = assets.find(a => a.name.endsWith('.dmg'));
+            const zip = assets.find(a => a.name.endsWith('.zip'));
+            downloadUrl = dmg?.browser_download_url || zip?.browser_download_url || downloadUrl;
+          }
           res.json({
             currentVersion,
             latestVersion: latestVersion || currentVersion,
             hasUpdate,
             releaseUrl: release.html_url || '',
-            downloadUrl: dmgAsset?.browser_download_url || zipAsset?.browser_download_url || release.html_url || '',
+            downloadUrl,
             releaseNotes: release.body || '',
           });
         } catch {

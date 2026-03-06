@@ -220,18 +220,35 @@ body {
 }
 
 .session-card.active {
-  border-color: rgba(34, 197, 94, 0.3);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2), 0 0 12px rgba(34, 197, 94, 0.08);
+  border-color: rgba(34, 197, 94, 0.5);
+  border-left: 3px solid rgb(34, 197, 94);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2), 0 0 20px rgba(34, 197, 94, 0.15), inset 0 0 30px rgba(34, 197, 94, 0.03);
+}
+
+.active-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: rgb(34, 197, 94);
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.25);
+  border-radius: 4px;
+  padding: 1px 6px;
+  flex-shrink: 0;
 }
 
 .active-dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  background: var(--success);
+  background: rgb(34, 197, 94);
   flex-shrink: 0;
   animation: pulse-dot 2s ease-in-out infinite;
-  box-shadow: 0 0 6px rgba(34, 197, 94, 0.5);
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
 }
 
 @keyframes pulse-dot {

@@ -32,6 +32,16 @@ function startServer() {
   });
 }
 
+function getIconPath() {
+  if (process.platform === 'win32') return path.join(__dirname, '..', 'assets', 'icon.ico');
+  if (process.platform === 'linux') return path.join(__dirname, '..', 'assets', 'icon.png');
+  return path.join(__dirname, '..', 'assets', 'icon.icns');
+}
+
+function getTitleBarStyle() {
+  return process.platform === 'darwin' ? 'hiddenInset' : 'default';
+}
+
 function openMdEditor(url) {
   // Extract filename from URL for the title
   const params = new URL(url).searchParams;
@@ -44,9 +54,9 @@ function openMdEditor(url) {
     minWidth: 400,
     minHeight: 300,
     title: fileName,
-    titleBarStyle: 'hiddenInset',
+    titleBarStyle: getTitleBarStyle(),
     backgroundColor: '#1a1a2e',
-    icon: path.join(__dirname, '..', 'assets', 'icon.icns'),
+    icon: getIconPath(),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -68,9 +78,9 @@ function openNotesWindow() {
     minWidth: 350,
     minHeight: 300,
     title: 'Notes',
-    titleBarStyle: 'hiddenInset',
+    titleBarStyle: getTitleBarStyle(),
     backgroundColor: '#1a1a2e',
-    icon: path.join(__dirname, '..', 'assets', 'icon.icns'),
+    icon: getIconPath(),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -92,9 +102,9 @@ function createWindow() {
     minWidth: 800,
     minHeight: 500,
     title: 'Session Manager',
-    titleBarStyle: 'hiddenInset',
+    titleBarStyle: getTitleBarStyle(),
     backgroundColor: '#0a0b10',
-    icon: path.join(__dirname, '..', 'assets', 'icon.icns'),
+    icon: getIconPath(),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -170,11 +180,38 @@ let screenshotInterval = null;
 let lastScreenshotFiles = new Set();
 
 function getScreenshotFolder() {
-  try {
-    const loc = execSync('defaults read com.apple.screencapture location', { encoding: 'utf-8' }).trim();
-    if (loc && fs.existsSync(loc)) return loc;
-  } catch {}
-  return path.join(os.homedir(), 'Desktop');
+  if (process.platform === 'darwin') {
+    try {
+      const loc = execSync('defaults read com.apple.screencapture location', { encoding: 'utf-8' }).trim();
+      if (loc && fs.existsSync(loc)) return loc;
+    } catch {}
+    return path.join(os.homedir(), 'Desktop');
+  } else if (process.platform === 'win32') {
+    // Windows default screenshot folder
+    const pictures = path.join(os.homedir(), 'Pictures', 'Screenshots');
+    if (fs.existsSync(pictures)) return pictures;
+    return path.join(os.homedir(), 'Desktop');
+  } else {
+    // Linux: common screenshot locations
+    const xdgPictures = path.join(os.homedir(), 'Pictures');
+    if (fs.existsSync(xdgPictures)) return xdgPictures;
+    return path.join(os.homedir(), 'Desktop');
+  }
+}
+
+function isScreenshotFile(filename) {
+  if (process.platform === 'darwin') {
+    return filename.startsWith('Screenshot') && filename.endsWith('.png');
+  } else if (process.platform === 'win32') {
+    return filename.startsWith('Screenshot') && filename.endsWith('.png');
+  } else {
+    // Linux: various naming conventions
+    return filename.endsWith('.png') && (
+      filename.startsWith('Screenshot') ||
+      filename.startsWith('screenshot') ||
+      filename.startsWith('Scr_')
+    );
+  }
 }
 
 function startScreenshotWatcher() {
@@ -190,7 +227,7 @@ function startScreenshotWatcher() {
   try {
     const files = fs.readdirSync(folder);
     files.forEach(f => {
-      if (f.startsWith('Screenshot') && f.endsWith('.png')) {
+      if (isScreenshotFile(f)) {
         lastScreenshotFiles.add(f);
       }
     });
@@ -201,7 +238,7 @@ function startScreenshotWatcher() {
     try {
       const files = fs.readdirSync(folder);
       for (const filename of files) {
-        if (!filename.startsWith('Screenshot') || !filename.endsWith('.png')) continue;
+        if (!isScreenshotFile(filename)) continue;
         if (lastScreenshotFiles.has(filename)) continue;
 
         lastScreenshotFiles.add(filename);
