@@ -462,34 +462,61 @@ function createServer(staticDir) {
         }
       }
 
-      function collectFiles(dirPath, depth = 0) {
-        if (depth > 3) return [];
-        const items = fs.readdirSync(dirPath, { withFileTypes: true });
+      function addFile(fp, files) {
+        const s = fs.statSync(fp);
+        const { title, description } = getDescription(fp);
+        const links = getLinks(fp);
+        const relativePath = fp.slice(dir.length).replace(/^\//, '');
+        files.push({ name: path.basename(fp), path: fp, relativePath, title, description, links, size: s.size, modified: s.mtime });
+      }
+
+      // Collect only CLAUDE.md files and .claude/ memory directories
+      function collectRulesAndMemory(rootDir) {
         let files = [];
 
-        items
-          .filter(e => e.isFile() && e.name.endsWith('.md'))
-          .sort((a, b) => a.name.localeCompare(b.name))
-          .forEach(e => {
-            const fp = path.join(dirPath, e.name);
-            const s = fs.statSync(fp);
-            const { title, description } = getDescription(fp);
-            const links = getLinks(fp);
-            const relativePath = fp.slice(dir.length).replace(/^\//, '');
-            files.push({ name: e.name, path: fp, relativePath, title, description, links, size: s.size, modified: s.mtime });
-          });
+        // 1. CLAUDE.md in the root
+        const rootClaude = path.join(rootDir, 'CLAUDE.md');
+        if (fs.existsSync(rootClaude)) addFile(rootClaude, files);
 
-        items
-          .filter(e => e.isDirectory() && !e.name.startsWith('.'))
-          .sort((a, b) => a.name.localeCompare(b.name))
-          .forEach(e => {
-            files = files.concat(collectFiles(path.join(dirPath, e.name), depth + 1));
-          });
+        // 2. .claude/CLAUDE.md
+        const dotClaudeMd = path.join(rootDir, '.claude', 'CLAUDE.md');
+        if (fs.existsSync(dotClaudeMd)) addFile(dotClaudeMd, files);
+
+        // 3. Find the matching memory directory in ~/.claude/projects/
+        const homeClaude = path.join(os.homedir(), '.claude', 'projects');
+        if (fs.existsSync(homeClaude)) {
+          // Claude encodes paths like /Users/sep/Desktop/repos → -Users-sep-Desktop-repos
+          const encoded = rootDir.replace(/\//g, '-');
+          const memoryDir = path.join(homeClaude, encoded, 'memory');
+          if (fs.existsSync(memoryDir)) {
+            const items = fs.readdirSync(memoryDir, { withFileTypes: true });
+            items
+              .filter(e => e.isFile() && e.name.endsWith('.md'))
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .forEach(e => addFile(path.join(memoryDir, e.name), files));
+          }
+          // Also check for CLAUDE.md in the project settings dir
+          const projClaude = path.join(homeClaude, encoded, 'CLAUDE.md');
+          if (fs.existsSync(projClaude)) addFile(projClaude, files);
+        }
+
+        // 4. Check subdirectories for their own CLAUDE.md files (one level)
+        try {
+          const items = fs.readdirSync(rootDir, { withFileTypes: true });
+          items
+            .filter(e => e.isDirectory() && !e.name.startsWith('.') && !e.name.startsWith('node_modules'))
+            .forEach(e => {
+              const subClaude = path.join(rootDir, e.name, 'CLAUDE.md');
+              if (fs.existsSync(subClaude)) addFile(subClaude, files);
+              const subDotClaude = path.join(rootDir, e.name, '.claude', 'CLAUDE.md');
+              if (fs.existsSync(subDotClaude)) addFile(subDotClaude, files);
+            });
+        } catch {}
 
         return files;
       }
 
-      const files = collectFiles(dir);
+      const files = collectRulesAndMemory(dir);
       res.json({ files, root: dir, rootName: path.basename(dir) });
     } catch (err) {
       res.status(500).json({ error: err.message });
