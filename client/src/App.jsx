@@ -751,74 +751,28 @@ export default function App() {
                     <div className="rules-root-children">
                       {files.length === 0 ? (
                         <div className="rules-empty">No .md files found</div>
-                      ) : files.map(file => {
-                        const isExpanded = expandedFiles.has(file.path);
-                        const content = fileContents[file.path];
-                        return (
-                          <div key={file.path} className="rules-item" data-filepath={file.path}>
-                            <div
-                              className={`rules-item-header ${isExpanded ? 'expanded' : ''}`}
-                              onClick={() => toggleFileExpand(file.path)}
-                            >
-                              <span className={`rules-chevron ${isExpanded ? 'open' : ''}`}>&#9656;</span>
-                              <div className="rules-item-info">
-                                <span className="rules-item-title">{file.title || file.name}</span>
-                                {file.description && !isExpanded && (
-                                  <span className="rules-item-desc">{file.description}</span>
-                                )}
-                                {file.links && file.links.length > 0 && !isExpanded && (
-                                  <div className="rules-item-links-hint">
-                                    {file.links.length} linked {file.links.length === 1 ? 'file' : 'files'}
-                                  </div>
-                                )}
-                              </div>
-                              <div className="rules-item-meta">
-                                <span className="rules-item-size">{(file.size / 1024).toFixed(1)}KB</span>
-                                <button
-                                  className="rules-edit-btn"
-                                  title="Edit in editor"
-                                  onClick={e => { e.stopPropagation(); openMemoryFile(file.path); }}
-                                >
-                                  Edit
-                                </button>
-                              </div>
+                      ) : files.map(file => (
+                        <div
+                          key={file.path}
+                          className="rules-item"
+                          onClick={() => openMemoryFile(file.path)}
+                        >
+                          <div className="rules-item-header">
+                            <div className="rules-item-info">
+                              <span className="rules-item-title">{file.title || file.name}</span>
+                              {file.description && (
+                                <span className="rules-item-desc">{file.description}</span>
+                              )}
+                              {file.links && file.links.length > 0 && (
+                                <div className="rules-item-links-hint">
+                                  {file.links.length} linked {file.links.length === 1 ? 'file' : 'files'}
+                                </div>
+                              )}
                             </div>
-                            {isExpanded && content !== undefined && (
-                              <div className="rules-item-content">
-                                <pre
-                                  className="rules-content-text"
-                                  onClick={e => {
-                                    if (e.target.classList.contains('memory-link')) {
-                                      e.preventDefault();
-                                      handleContentLinkClick(e.target.dataset.target);
-                                    }
-                                  }}
-                                  dangerouslySetInnerHTML={{
-                                    __html: renderMarkdownContent(
-                                      content.replace(/</g, '&lt;').replace(/>/g, '&gt;'),
-                                      file.path
-                                    )
-                                  }}
-                                />
-                                {file.links && file.links.length > 0 && (
-                                  <div className="rules-linked-files">
-                                    <div className="rules-linked-label">Linked files:</div>
-                                    {file.links.map(link => (
-                                      <button
-                                        key={link.path}
-                                        className="rules-linked-btn"
-                                        onClick={() => handleContentLinkClick(link.path)}
-                                      >
-                                        {link.label}
-                                      </button>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            )}
+                            <span className="rules-item-size">{(file.size / 1024).toFixed(1)}KB</span>
                           </div>
-                        );
-                      })}
+                        </div>
+                      ))}
                     </div>
                   </div>
                 );
