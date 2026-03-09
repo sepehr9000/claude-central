@@ -763,18 +763,14 @@ function createServer(staticDir) {
     });
   });
 
-  // POST /api/apply-update — git pull, npm install, rebuild client, restart
+  // POST /api/apply-update — git pull, npm install, rebuild client
   app.post('/api/apply-update', (req, res) => {
     const repoDir = path.join(__dirname, '..');
-    exec('git pull origin main && npm install --silent && npm run build:client', { cwd: repoDir, timeout: 60000 }, (err, stdout, stderr) => {
+    exec('git pull origin main && npm install --silent && npm run build:client', { cwd: repoDir, timeout: 120000 }, (err, stdout, stderr) => {
       if (err) {
         return res.status(500).json({ error: err.message, stderr });
       }
       res.json({ success: true, output: stdout });
-      // Restart the process after a short delay so the response gets sent
-      setTimeout(() => {
-        process.exit(0); // Electron or process manager will restart
-      }, 500);
     });
   });
 
