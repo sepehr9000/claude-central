@@ -749,54 +749,32 @@ function createServer(staticDir) {
     res.json({ version: pkg.version });
   });
 
-  // GET /api/check-update
+  // GET /api/check-update — check if git has new commits
   app.get('/api/check-update', (req, res) => {
-    const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf-8'));
-    const currentVersion = pkg.version;
-
-    const options = {
-      hostname: 'api.github.com',
-      path: '/repos/sepehr9000/calculator/releases/latest',
-      headers: { 'User-Agent': 'claude-session-manager' },
-    };
-
-    https.get(options, (response) => {
-      let data = '';
-      response.on('data', chunk => data += chunk);
-      response.on('end', () => {
-        try {
-          const release = JSON.parse(data);
-          const latestVersion = (release.tag_name || '').replace(/^v/, '');
-          const hasUpdate = latestVersion && latestVersion !== currentVersion;
-          const assets = release.assets || [];
-          let downloadUrl = release.html_url || '';
-          if (process.platform === 'win32') {
-            const exe = assets.find(a => a.name.endsWith('.exe'));
-            const zip = assets.find(a => a.name.endsWith('.zip') && /win/i.test(a.name));
-            downloadUrl = exe?.browser_download_url || zip?.browser_download_url || downloadUrl;
-          } else if (process.platform === 'linux') {
-            const appImage = assets.find(a => a.name.endsWith('.AppImage'));
-            const deb = assets.find(a => a.name.endsWith('.deb'));
-            downloadUrl = appImage?.browser_download_url || deb?.browser_download_url || downloadUrl;
-          } else {
-            const dmg = assets.find(a => a.name.endsWith('.dmg'));
-            const zip = assets.find(a => a.name.endsWith('.zip'));
-            downloadUrl = dmg?.browser_download_url || zip?.browser_download_url || downloadUrl;
-          }
-          res.json({
-            currentVersion,
-            latestVersion: latestVersion || currentVersion,
-            hasUpdate,
-            releaseUrl: release.html_url || '',
-            downloadUrl,
-            releaseNotes: release.body || '',
-          });
-        } catch {
-          res.json({ currentVersion, latestVersion: currentVersion, hasUpdate: false });
-        }
+    const repoDir = path.join(__dirname, '..');
+    exec('git fetch origin main && git log HEAD..origin/main --oneline', { cwd: repoDir }, (err, stdout) => {
+      const newCommits = stdout ? stdout.trim().split('\n').filter(Boolean) : [];
+      const hasUpdate = newCommits.length > 0;
+      res.json({
+        hasUpdate,
+        commitCount: newCommits.length,
+        commits: newCommits.slice(0, 10),
       });
-    }).on('error', () => {
-      res.json({ currentVersion, latestVersion: currentVersion, hasUpdate: false });
+    });
+  });
+
+  // POST /api/apply-update — git pull, npm install, rebuild client, restart
+  app.post('/api/apply-update', (req, res) => {
+    const repoDir = path.join(__dirname, '..');
+    exec('git pull origin main && npm install --silent && npm run build:client', { cwd: repoDir, timeout: 60000 }, (err, stdout, stderr) => {
+      if (err) {
+        return res.status(500).json({ error: err.message, stderr });
+      }
+      res.json({ success: true, output: stdout });
+      // Restart the process after a short delay so the response gets sent
+      setTimeout(() => {
+        process.exit(0); // Electron or process manager will restart
+      }, 500);
     });
   });
 

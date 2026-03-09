@@ -124,10 +124,30 @@ export default function App() {
       const data = await res.json();
       setUpdateInfo(data);
       if (!data.hasUpdate) {
-        showToast(`You're on the latest version (v${data.currentVersion})`, 'success');
+        showToast('Already up to date', 'success');
       }
     } catch {
       showToast('Failed to check for updates', 'error');
+    } finally {
+      setCheckingUpdate(false);
+    }
+  }
+
+  async function applyUpdate() {
+    setCheckingUpdate(true);
+    showToast('Pulling & rebuilding...', 'success');
+    try {
+      const res = await fetch('/api/apply-update', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Updated! Reloading...', 'success');
+        setTimeout(() => window.location.reload(), 1500);
+      } else {
+        showToast('Update failed: ' + (data.error || 'unknown'), 'error');
+      }
+    } catch {
+      // Server restarted — just reload
+      setTimeout(() => window.location.reload(), 2000);
     } finally {
       setCheckingUpdate(false);
     }
@@ -1016,7 +1036,7 @@ export default function App() {
                 {checkingUpdate ? 'Checking...' : 'Check for Updates'}
                 {updateInfo && !updateInfo.hasUpdate && (
                   <span style={{ marginLeft: 'auto', color: 'var(--success)', fontSize: 12 }}>
-                    v{updateInfo.currentVersion} (latest)
+                    Up to date
                   </span>
                 )}
               </button>
@@ -1026,22 +1046,21 @@ export default function App() {
                   border: '1px solid var(--border-active)', borderRadius: 'var(--radius)',
                 }}>
                   <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                    v{updateInfo.latestVersion} available
+                    {updateInfo.commitCount} new commit{updateInfo.commitCount !== 1 ? 's' : ''} available
                   </div>
-                  {updateInfo.releaseNotes && (
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>
-                      {updateInfo.releaseNotes.slice(0, 200)}
+                  {updateInfo.commits && updateInfo.commits.length > 0 && (
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8, fontFamily: 'monospace' }}>
+                      {updateInfo.commits.map((c, i) => <div key={i}>{c}</div>)}
                     </div>
                   )}
-                  <a
-                    href={updateInfo.downloadUrl}
-                    target="_blank"
-                    rel="noreferrer"
+                  <button
                     className="save-btn"
-                    style={{ textDecoration: 'none', display: 'inline-block', fontSize: 13 }}
+                    onClick={applyUpdate}
+                    disabled={checkingUpdate}
+                    style={{ fontSize: 13, cursor: 'pointer' }}
                   >
-                    Download Update
-                  </a>
+                    {checkingUpdate ? 'Updating...' : 'Apply Update'}
+                  </button>
                 </div>
               )}
             </div>
