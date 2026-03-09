@@ -71,6 +71,10 @@ export default function App() {
   const [memoryBrowsePath, setMemoryBrowsePath] = useState(null);
   const [memoryEntries, setMemoryEntries] = useState([]);
   const [memoryBreadcrumb, setMemoryBreadcrumb] = useState([]);
+  const [memoryTrees, setMemoryTrees] = useState({});
+  const [expandedFiles, setExpandedFiles] = useState(new Set());
+  const [fileContents, setFileContents] = useState({});
+  const [expandedDirs, setExpandedDirs] = useState(new Set());
   const [cloneHistory, setCloneHistory] = useState([]);
   const [expandedHistoryIds, setExpandedHistoryIds] = useState(new Set());
   const [editingClone, setEditingClone] = useState(null);
@@ -316,6 +320,22 @@ export default function App() {
       const res = await fetch('/api/memory/paths');
       const data = await res.json();
       setMemoryPaths(data.paths || []);
+      // Fetch trees for all paths
+      for (const p of (data.paths || [])) {
+        fetchMemoryTree(p);
+      }
+    } catch {}
+  }
+
+  async function fetchMemoryTree(rootPath) {
+    try {
+      const res = await fetch('/api/memory/tree?path=' + encodeURIComponent(rootPath));
+      const data = await res.json();
+      if (data.tree) {
+        setMemoryTrees(prev => ({ ...prev, [rootPath]: data.tree }));
+        // Auto-expand root
+        setExpandedDirs(prev => new Set([...prev, rootPath]));
+      }
     } catch {}
   }
 
@@ -330,6 +350,7 @@ export default function App() {
       const data = await res.json();
       if (data.error) { showToast(data.error, 'error'); return; }
       setMemoryPaths(data.paths || []);
+      fetchMemoryTree(p.trim());
       showToast('Path added', 'success');
     } catch { showToast('Failed to add path', 'error'); }
   }
@@ -354,34 +375,80 @@ export default function App() {
       });
       const data = await res.json();
       setMemoryPaths(data.paths || []);
-      if (memoryBrowsePath && memoryBrowsePath.startsWith(p)) {
-        setMemoryBrowsePath(null);
-        setMemoryEntries([]);
-        setMemoryBreadcrumb([]);
-      }
+      setMemoryTrees(prev => {
+        const next = { ...prev };
+        delete next[p];
+        return next;
+      });
     } catch {}
   }
 
-  async function browseMemory(dir, rootPath) {
-    try {
-      const res = await fetch('/api/memory/browse?path=' + encodeURIComponent(dir));
-      const data = await res.json();
-      if (data.error) return;
-      setMemoryEntries(data.entries || []);
-      setMemoryBrowsePath(dir);
-      // Build breadcrumb from root
-      const root = rootPath || memoryPaths.find(p => dir.startsWith(p)) || dir;
-      const rel = dir.slice(root.length).replace(/^\//, '');
-      const parts = [{ name: root.split('/').pop() || root, path: root }];
-      if (rel) {
-        let acc = root;
-        for (const seg of rel.split('/')) {
-          acc += '/' + seg;
-          parts.push({ name: seg, path: acc });
-        }
+  async function toggleFileExpand(filePath) {
+    const isExpanded = expandedFiles.has(filePath);
+    if (isExpanded) {
+      setExpandedFiles(prev => {
+        const next = new Set(prev);
+        next.delete(filePath);
+        return next;
+      });
+    } else {
+      // Fetch content if not cached
+      if (!fileContents[filePath]) {
+        try {
+          const res = await fetch('/api/memory/file?path=' + encodeURIComponent(filePath));
+          const data = await res.json();
+          setFileContents(prev => ({ ...prev, [filePath]: data.content || '' }));
+        } catch {}
       }
-      setMemoryBreadcrumb(parts);
-    } catch {}
+      setExpandedFiles(prev => new Set([...prev, filePath]));
+    }
+  }
+
+  function toggleDirExpand(dirPath) {
+    setExpandedDirs(prev => {
+      const next = new Set(prev);
+      if (next.has(dirPath)) next.delete(dirPath);
+      else next.add(dirPath);
+      return next;
+    });
+  }
+
+  function handleContentLinkClick(targetPath) {
+    // Expand the linked file
+    if (!expandedFiles.has(targetPath)) {
+      toggleFileExpand(targetPath);
+    }
+    // Scroll to it
+    setTimeout(() => {
+      const el = document.querySelector(`[data-filepath="${CSS.escape(targetPath)}"]`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+  }
+
+  function renderMarkdownContent(content, filePath) {
+    // Parse markdown links [text](file.md) and make them clickable
+    const parts = [];
+    const linkRegex = /\[([^\]]+)\]\(([^)]+\.md)\)/g;
+    let lastIndex = 0;
+    let match;
+    while ((match = linkRegex.exec(content)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(content.slice(lastIndex, match.index));
+      }
+      const label = match[1];
+      const relativePath = match[2];
+      // Resolve relative to the file's directory
+      const dir = filePath.substring(0, filePath.lastIndexOf('/'));
+      const resolved = dir + '/' + relativePath;
+      parts.push(
+        `<a class="memory-link" data-target="${resolved}" href="#">${label}</a>`
+      );
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < content.length) {
+      parts.push(content.slice(lastIndex));
+    }
+    return parts.join('');
   }
 
   function openMemoryFile(filePath) {
@@ -642,7 +709,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Memory Browser */}
+      {/* Memory Browser — Vertical Tree View */}
       {filter === 'memory' && (
         <div className="memory-view">
           <div className="memory-paths-header">
@@ -651,74 +718,140 @@ export default function App() {
             </div>
           </div>
 
-          {!memoryBrowsePath ? (
-            <div className="session-list">
-              {memoryPaths.length === 0 ? (
-                <div className="empty-state">
-                  <div className="icon">MD</div>
-                  <h3>No memory paths added</h3>
-                  <p>Add folder paths above to browse .md files</p>
-                </div>
-              ) : memoryPaths.map(p => (
-                <div key={p} className="session-card" style={{ cursor: 'pointer' }} onClick={() => browseMemory(p, p)}>
-                  <div className="session-info">
-                    <div className="session-header">
-                      <span className="session-name">{p.split('/').pop() || p}</span>
-                    </div>
-                    <div className="session-meta">
-                      <span className="project-badge" title={p}>{p}</span>
-                    </div>
-                  </div>
-                  <div className="session-actions">
-                    <button className="action-btn edit-btn" onClick={e => { e.stopPropagation(); removeMemoryPath(p); }}>Remove</button>
-                  </div>
-                </div>
-              ))}
+          {memoryPaths.length === 0 ? (
+            <div className="empty-state">
+              <div className="icon">MD</div>
+              <h3>No memory paths added</h3>
+              <p>Add folder paths above to browse .md files</p>
             </div>
           ) : (
-            <div className="session-list">
-              <div className="memory-breadcrumb">
-                <button className="breadcrumb-btn" onClick={() => { setMemoryBrowsePath(null); setMemoryEntries([]); setMemoryBreadcrumb([]); }}>
-                  Roots
-                </button>
-                {memoryBreadcrumb.map((b, i) => (
-                  <span key={b.path}>
-                    <span className="breadcrumb-sep">/</span>
-                    <button
-                      className={`breadcrumb-btn ${i === memoryBreadcrumb.length - 1 ? 'active' : ''}`}
-                      onClick={() => browseMemory(b.path)}
-                    >
-                      {b.name}
-                    </button>
-                  </span>
-                ))}
-              </div>
-              {memoryEntries.length === 0 ? (
-                <div className="empty-state">
-                  <h3>Empty folder</h3>
-                  <p>No directories or .md files here</p>
-                </div>
-              ) : memoryEntries.map(entry => (
-                <div
-                  key={entry.path}
-                  className="session-card"
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => entry.type === 'dir' ? browseMemory(entry.path) : openMemoryFile(entry.path)}
-                >
-                  <div className="session-info">
-                    <div className="session-header">
-                      <span style={{ marginRight: 8, opacity: 0.5 }}>{entry.type === 'dir' ? '📁' : '📄'}</span>
-                      <span className="session-name">{entry.name}</span>
+            <div className="rules-tree">
+              {memoryPaths.map(rootPath => {
+                const tree = memoryTrees[rootPath];
+                if (!tree) return (
+                  <div key={rootPath} className="rules-root">
+                    <div className="rules-root-header">
+                      <span className="rules-root-name">{rootPath.split('/').pop() || rootPath}</span>
+                      <span className="rules-root-path">{rootPath}</span>
                     </div>
-                    {entry.type === 'file' && (
-                      <div className="session-meta">
-                        <span>{(entry.size / 1024).toFixed(1)} KB</span>
-                        <span>{new Date(entry.modified).toLocaleDateString()}</span>
+                  </div>
+                );
+
+                function renderNode(node, depth = 0) {
+                  if (node.type === 'file') {
+                    const isExpanded = expandedFiles.has(node.path);
+                    const content = fileContents[node.path];
+                    return (
+                      <div key={node.path} className="rules-item" data-filepath={node.path} style={{ '--depth': depth }}>
+                        <div
+                          className={`rules-item-header ${isExpanded ? 'expanded' : ''}`}
+                          onClick={() => toggleFileExpand(node.path)}
+                        >
+                          <span className={`rules-chevron ${isExpanded ? 'open' : ''}`}>&#9656;</span>
+                          <div className="rules-item-info">
+                            <span className="rules-item-title">{node.title || node.name}</span>
+                            {node.description && !isExpanded && (
+                              <span className="rules-item-desc">{node.description}</span>
+                            )}
+                            {node.links && node.links.length > 0 && !isExpanded && (
+                              <div className="rules-item-links-hint">
+                                {node.links.length} linked {node.links.length === 1 ? 'file' : 'files'}
+                              </div>
+                            )}
+                          </div>
+                          <div className="rules-item-meta">
+                            <span className="rules-item-size">{(node.size / 1024).toFixed(1)}KB</span>
+                            <button
+                              className="rules-edit-btn"
+                              title="Edit in editor"
+                              onClick={e => { e.stopPropagation(); openMemoryFile(node.path); }}
+                            >
+                              Edit
+                            </button>
+                          </div>
+                        </div>
+                        {isExpanded && content !== undefined && (
+                          <div className="rules-item-content">
+                            <pre
+                              className="rules-content-text"
+                              onClick={e => {
+                                if (e.target.classList.contains('memory-link')) {
+                                  e.preventDefault();
+                                  handleContentLinkClick(e.target.dataset.target);
+                                }
+                              }}
+                              dangerouslySetInnerHTML={{
+                                __html: renderMarkdownContent(
+                                  content.replace(/</g, '&lt;').replace(/>/g, '&gt;'),
+                                  node.path
+                                )
+                              }}
+                            />
+                            {node.links && node.links.length > 0 && (
+                              <div className="rules-linked-files">
+                                <div className="rules-linked-label">Linked files:</div>
+                                {node.links.map(link => (
+                                  <button
+                                    key={link.path}
+                                    className="rules-linked-btn"
+                                    onClick={() => handleContentLinkClick(link.path)}
+                                  >
+                                    {link.label}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  // Directory node
+                  const isExpanded = expandedDirs.has(node.path);
+                  return (
+                    <div key={node.path} className="rules-dir" style={{ '--depth': depth }}>
+                      <div
+                        className="rules-dir-header"
+                        onClick={() => toggleDirExpand(node.path)}
+                      >
+                        <span className={`rules-chevron ${isExpanded ? 'open' : ''}`}>&#9656;</span>
+                        <span className="rules-dir-name">{node.name}</span>
+                        <span className="rules-dir-count">{node.children.length}</span>
+                      </div>
+                      {isExpanded && node.children.map(child => renderNode(child, depth + 1))}
+                    </div>
+                  );
+                }
+
+                const isRootExpanded = expandedDirs.has(rootPath);
+                return (
+                  <div key={rootPath} className="rules-root">
+                    <div
+                      className="rules-root-header"
+                      onClick={() => toggleDirExpand(rootPath)}
+                    >
+                      <span className={`rules-chevron root-chevron ${isRootExpanded ? 'open' : ''}`}>&#9656;</span>
+                      <div className="rules-root-info">
+                        <span className="rules-root-name">{rootPath.split('/').pop() || rootPath}</span>
+                        <span className="rules-root-path">{rootPath}</span>
+                      </div>
+                      <button
+                        className="rules-remove-btn"
+                        onClick={e => { e.stopPropagation(); removeMemoryPath(rootPath); }}
+                        title="Remove folder"
+                      >
+                        &times;
+                      </button>
+                    </div>
+                    {isRootExpanded && tree.children && (
+                      <div className="rules-root-children">
+                        {tree.children.map(child => renderNode(child, 0))}
                       </div>
                     )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

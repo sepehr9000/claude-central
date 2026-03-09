@@ -417,6 +417,104 @@ function createServer(staticDir) {
     }
   });
 
+  // GET /api/memory/tree — return full tree with descriptions for a root path
+  app.get('/api/memory/tree', (req, res) => {
+    const dir = req.query.path;
+    if (!dir || !fs.existsSync(dir)) return res.status(400).json({ error: 'Invalid path' });
+    try {
+      function getDescription(filePath) {
+        try {
+          const content = fs.readFileSync(filePath, 'utf-8');
+          const lines = content.split('\n').filter(l => l.trim());
+          // Skip the first heading, find the first descriptive line
+          let title = '';
+          let desc = '';
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith('#') && !title) {
+              title = trimmed.replace(/^#+\s*/, '');
+            } else if (trimmed && !trimmed.startsWith('#') && !trimmed.startsWith('|') && !trimmed.startsWith('-') && !trimmed.startsWith('```')) {
+              desc = trimmed;
+              break;
+            }
+          }
+          return { title: title || path.basename(filePath, '.md'), description: desc || '' };
+        } catch {
+          return { title: path.basename(filePath, '.md'), description: '' };
+        }
+      }
+
+      function getLinks(filePath) {
+        try {
+          const content = fs.readFileSync(filePath, 'utf-8');
+          const linkRegex = /\[([^\]]+)\]\(([^)]+\.md)\)/g;
+          const links = [];
+          let match;
+          while ((match = linkRegex.exec(content)) !== null) {
+            const linkPath = match[2];
+            const resolved = path.resolve(path.dirname(filePath), linkPath);
+            if (fs.existsSync(resolved)) {
+              links.push({ label: match[1], path: resolved, relativePath: linkPath });
+            }
+          }
+          return links;
+        } catch {
+          return [];
+        }
+      }
+
+      function buildTree(dirPath, depth = 0) {
+        if (depth > 3) return null;
+        const items = fs.readdirSync(dirPath, { withFileTypes: true });
+        const children = [];
+
+        // Files first
+        items
+          .filter(e => e.isFile() && e.name.endsWith('.md'))
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .forEach(e => {
+            const fp = path.join(dirPath, e.name);
+            const s = fs.statSync(fp);
+            const { title, description } = getDescription(fp);
+            const links = getLinks(fp);
+            children.push({
+              name: e.name,
+              type: 'file',
+              path: fp,
+              title,
+              description,
+              links,
+              size: s.size,
+              modified: s.mtime,
+            });
+          });
+
+        // Then subdirectories
+        items
+          .filter(e => e.isDirectory() && !e.name.startsWith('.'))
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .forEach(e => {
+            const subTree = buildTree(path.join(dirPath, e.name), depth + 1);
+            if (subTree && subTree.children.length > 0) {
+              children.push(subTree);
+            }
+          });
+
+        return {
+          name: path.basename(dirPath),
+          type: 'dir',
+          path: dirPath,
+          children,
+        };
+      }
+
+      const tree = buildTree(dir);
+      res.json({ tree });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // GET /api/memory/file — read an .md file
   app.get('/api/memory/file', (req, res) => {
     const filePath = req.query.path;

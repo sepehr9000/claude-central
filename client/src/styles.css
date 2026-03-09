@@ -1150,6 +1150,288 @@ body {
   margin: 0 1px;
 }
 
+/* Rules Tree View */
+.rules-tree {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 12px 20px;
+}
+
+.rules-root {
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--card-bg);
+}
+
+.rules-root-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  cursor: pointer;
+  background: var(--card-bg);
+  transition: background 0.15s;
+}
+
+.rules-root-header:hover {
+  background: var(--hover);
+}
+
+.rules-root-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.rules-root-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text);
+  display: block;
+}
+
+.rules-root-path {
+  font-size: 11px;
+  color: var(--text-muted);
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rules-remove-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.rules-root-header:hover .rules-remove-btn {
+  opacity: 1;
+}
+
+.rules-remove-btn:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.rules-root-children {
+  border-top: 1px solid var(--border);
+}
+
+.rules-chevron {
+  font-size: 12px;
+  color: var(--text-muted);
+  transition: transform 0.2s;
+  display: inline-block;
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+}
+
+.rules-chevron.open {
+  transform: rotate(90deg);
+}
+
+.rules-chevron.root-chevron {
+  font-size: 14px;
+}
+
+/* Directory nodes */
+.rules-dir {
+  border-top: 1px solid var(--border);
+}
+
+.rules-dir-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  padding-left: calc(16px + calc(var(--depth, 0) * 20px));
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.rules-dir-header:hover {
+  background: var(--hover);
+}
+
+.rules-dir-name {
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.rules-dir-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--hover);
+  padding: 1px 7px;
+  border-radius: 10px;
+  margin-left: 4px;
+}
+
+/* File/Rule items */
+.rules-item {
+  border-top: 1px solid var(--border);
+}
+
+.rules-item-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 16px;
+  padding-left: calc(16px + calc(var(--depth, 0) * 20px));
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.rules-item-header:hover {
+  background: var(--hover);
+}
+
+.rules-item-header.expanded {
+  background: var(--hover);
+  border-bottom: 1px solid var(--border);
+}
+
+.rules-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.rules-item-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  display: block;
+}
+
+.rules-item-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: block;
+  margin-top: 3px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rules-item-links-hint {
+  font-size: 11px;
+  color: var(--primary);
+  margin-top: 3px;
+  opacity: 0.7;
+}
+
+.rules-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.rules-item-size {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.rules-edit-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.rules-item-header:hover .rules-edit-btn {
+  opacity: 1;
+}
+
+.rules-edit-btn:hover {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+/* Expanded file content */
+.rules-item-content {
+  padding: 0;
+  background: var(--bg);
+}
+
+.rules-content-text {
+  margin: 0;
+  padding: 14px 20px;
+  padding-left: calc(20px + calc(var(--depth, 0) * 20px));
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.rules-content-text .memory-link {
+  color: var(--primary);
+  text-decoration: underline;
+  cursor: pointer;
+  text-decoration-style: dotted;
+}
+
+.rules-content-text .memory-link:hover {
+  text-decoration-style: solid;
+  opacity: 0.8;
+}
+
+.rules-linked-files {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--card-bg);
+}
+
+.rules-linked-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.rules-linked-btn {
+  background: var(--hover);
+  border: 1px solid var(--border);
+  color: var(--primary);
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.rules-linked-btn:hover {
+  background: var(--bg);
+  border-color: var(--primary);
+}
+
 /* Memory file editor */
 .memory-editor-modal {
   width: 700px;
