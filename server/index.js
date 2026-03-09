@@ -571,6 +571,10 @@ function createServer(staticDir) {
   // Cross-platform terminal launcher helper
   function launchInTerminal(claudeCmd, terminalPref, tabTitle, callback) {
     const platform = process.platform;
+    // Strip CLAUDECODE from environment so spawned terminals don't inherit it
+    const cleanEnv = { ...process.env };
+    delete cleanEnv.CLAUDECODE;
+    const execOpts = { env: cleanEnv };
 
     if (platform === 'darwin') {
       // macOS: use osascript
@@ -605,7 +609,7 @@ function createServer(staticDir) {
           `;
         }
 
-        exec(`osascript -e '${script.replace(/'/g, "'\\''")}'`, (err) => {
+        exec(`osascript -e '${script.replace(/'/g, "'\\''")}'`, execOpts, (err) => {
           if (err && fallback) fallback();
           else callback(err, terminalApp);
         });
@@ -624,18 +628,18 @@ function createServer(staticDir) {
       const escapedCmd = claudeCmd.replace(/"/g, '""');
 
       if (terminalPref === 'powershell') {
-        exec(`start powershell -NoExit -Command "${escapedCmd}"`, (err) => {
+        exec(`start powershell -NoExit -Command "${escapedCmd}"`, execOpts, (err) => {
           callback(err, 'powershell');
         });
       } else if (terminalPref === 'cmd') {
-        exec(`start cmd.exe /k "${escapedCmd}"`, (err) => {
+        exec(`start cmd.exe /k "${escapedCmd}"`, execOpts, (err) => {
           callback(err, 'cmd');
         });
       } else {
         // Default: try Windows Terminal first, fall back to cmd
-        exec(`wt.exe -d . cmd /k "${escapedCmd}"`, (err) => {
+        exec(`wt.exe -d . cmd /k "${escapedCmd}"`, execOpts, (err) => {
           if (err) {
-            exec(`start cmd.exe /k "${escapedCmd}"`, (err2) => {
+            exec(`start cmd.exe /k "${escapedCmd}"`, execOpts, (err2) => {
               callback(err2, 'cmd');
             });
           } else {
@@ -656,7 +660,7 @@ function createServer(staticDir) {
       if (terminalPref && terminalPref !== 'default') {
         const match = terminals.find(t => t.name === terminalPref);
         if (match) {
-          exec(match.cmd, (err) => callback(err, match.name));
+          exec(match.cmd, execOpts, (err) => callback(err, match.name));
           return;
         }
       }
@@ -667,7 +671,7 @@ function createServer(staticDir) {
           callback(new Error('No terminal emulator found'), null);
           return;
         }
-        exec(terminals[i].cmd, (err) => {
+        exec(terminals[i].cmd, execOpts, (err) => {
           if (err) tryNext(i + 1);
           else callback(null, terminals[i].name);
         });
