@@ -71,10 +71,9 @@ export default function App() {
   const [memoryBrowsePath, setMemoryBrowsePath] = useState(null);
   const [memoryEntries, setMemoryEntries] = useState([]);
   const [memoryBreadcrumb, setMemoryBreadcrumb] = useState([]);
-  const [memoryTrees, setMemoryTrees] = useState({});
+  const [memoryFiles, setMemoryFiles] = useState({});
   const [expandedFiles, setExpandedFiles] = useState(new Set());
   const [fileContents, setFileContents] = useState({});
-  const [expandedDirs, setExpandedDirs] = useState(new Set());
   const [cloneHistory, setCloneHistory] = useState([]);
   const [expandedHistoryIds, setExpandedHistoryIds] = useState(new Set());
   const [editingClone, setEditingClone] = useState(null);
@@ -320,21 +319,18 @@ export default function App() {
       const res = await fetch('/api/memory/paths');
       const data = await res.json();
       setMemoryPaths(data.paths || []);
-      // Fetch trees for all paths
       for (const p of (data.paths || [])) {
-        fetchMemoryTree(p);
+        fetchMemoryFiles(p);
       }
     } catch {}
   }
 
-  async function fetchMemoryTree(rootPath) {
+  async function fetchMemoryFiles(rootPath) {
     try {
       const res = await fetch('/api/memory/tree?path=' + encodeURIComponent(rootPath));
       const data = await res.json();
-      if (data.tree) {
-        setMemoryTrees(prev => ({ ...prev, [rootPath]: data.tree }));
-        // Auto-expand root
-        setExpandedDirs(prev => new Set([...prev, rootPath]));
+      if (data.files) {
+        setMemoryFiles(prev => ({ ...prev, [rootPath]: { files: data.files, rootName: data.rootName } }));
       }
     } catch {}
   }
@@ -350,7 +346,7 @@ export default function App() {
       const data = await res.json();
       if (data.error) { showToast(data.error, 'error'); return; }
       setMemoryPaths(data.paths || []);
-      fetchMemoryTree(p.trim());
+      fetchMemoryFiles(p.trim());
       showToast('Path added', 'success');
     } catch { showToast('Failed to add path', 'error'); }
   }
@@ -375,7 +371,7 @@ export default function App() {
       });
       const data = await res.json();
       setMemoryPaths(data.paths || []);
-      setMemoryTrees(prev => {
+      setMemoryFiles(prev => {
         const next = { ...prev };
         delete next[p];
         return next;
@@ -392,7 +388,6 @@ export default function App() {
         return next;
       });
     } else {
-      // Fetch content if not cached
       if (!fileContents[filePath]) {
         try {
           const res = await fetch('/api/memory/file?path=' + encodeURIComponent(filePath));
@@ -404,21 +399,10 @@ export default function App() {
     }
   }
 
-  function toggleDirExpand(dirPath) {
-    setExpandedDirs(prev => {
-      const next = new Set(prev);
-      if (next.has(dirPath)) next.delete(dirPath);
-      else next.add(dirPath);
-      return next;
-    });
-  }
-
   function handleContentLinkClick(targetPath) {
-    // Expand the linked file
     if (!expandedFiles.has(targetPath)) {
       toggleFileExpand(targetPath);
     }
-    // Scroll to it
     setTimeout(() => {
       const el = document.querySelector(`[data-filepath="${CSS.escape(targetPath)}"]`);
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -426,7 +410,6 @@ export default function App() {
   }
 
   function renderMarkdownContent(content, filePath) {
-    // Parse markdown links [text](file.md) and make them clickable
     const parts = [];
     const linkRegex = /\[([^\]]+)\]\(([^)]+\.md)\)/g;
     let lastIndex = 0;
@@ -437,7 +420,6 @@ export default function App() {
       }
       const label = match[1];
       const relativePath = match[2];
-      // Resolve relative to the file's directory
       const dir = filePath.substring(0, filePath.lastIndexOf('/'));
       const resolved = dir + '/' + relativePath;
       parts.push(
@@ -709,7 +691,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Memory Browser — Vertical Tree View */}
+      {/* Memory — Flat scrollable list of all .md files */}
       {filter === 'memory' && (
         <div className="memory-view">
           <div className="memory-paths-header">
@@ -727,128 +709,97 @@ export default function App() {
           ) : (
             <div className="rules-tree">
               {memoryPaths.map(rootPath => {
-                const tree = memoryTrees[rootPath];
-                if (!tree) return (
-                  <div key={rootPath} className="rules-root">
-                    <div className="rules-root-header">
-                      <span className="rules-root-name">{rootPath.split('/').pop() || rootPath}</span>
-                      <span className="rules-root-path">{rootPath}</span>
-                    </div>
-                  </div>
-                );
+                const data = memoryFiles[rootPath];
+                const files = data ? data.files : [];
+                const rootName = data ? data.rootName : rootPath.split('/').pop();
 
-                function renderNode(node, depth = 0) {
-                  if (node.type === 'file') {
-                    const isExpanded = expandedFiles.has(node.path);
-                    const content = fileContents[node.path];
-                    return (
-                      <div key={node.path} className="rules-item" data-filepath={node.path} style={{ '--depth': depth }}>
-                        <div
-                          className={`rules-item-header ${isExpanded ? 'expanded' : ''}`}
-                          onClick={() => toggleFileExpand(node.path)}
-                        >
-                          <span className={`rules-chevron ${isExpanded ? 'open' : ''}`}>&#9656;</span>
-                          <div className="rules-item-info">
-                            <span className="rules-item-title">{node.title || node.name}</span>
-                            {node.description && !isExpanded && (
-                              <span className="rules-item-desc">{node.description}</span>
-                            )}
-                            {node.links && node.links.length > 0 && !isExpanded && (
-                              <div className="rules-item-links-hint">
-                                {node.links.length} linked {node.links.length === 1 ? 'file' : 'files'}
-                              </div>
-                            )}
-                          </div>
-                          <div className="rules-item-meta">
-                            <span className="rules-item-size">{(node.size / 1024).toFixed(1)}KB</span>
-                            <button
-                              className="rules-edit-btn"
-                              title="Edit in editor"
-                              onClick={e => { e.stopPropagation(); openMemoryFile(node.path); }}
-                            >
-                              Edit
-                            </button>
-                          </div>
-                        </div>
-                        {isExpanded && content !== undefined && (
-                          <div className="rules-item-content">
-                            <pre
-                              className="rules-content-text"
-                              onClick={e => {
-                                if (e.target.classList.contains('memory-link')) {
-                                  e.preventDefault();
-                                  handleContentLinkClick(e.target.dataset.target);
-                                }
-                              }}
-                              dangerouslySetInnerHTML={{
-                                __html: renderMarkdownContent(
-                                  content.replace(/</g, '&lt;').replace(/>/g, '&gt;'),
-                                  node.path
-                                )
-                              }}
-                            />
-                            {node.links && node.links.length > 0 && (
-                              <div className="rules-linked-files">
-                                <div className="rules-linked-label">Linked files:</div>
-                                {node.links.map(link => (
-                                  <button
-                                    key={link.path}
-                                    className="rules-linked-btn"
-                                    onClick={() => handleContentLinkClick(link.path)}
-                                  >
-                                    {link.label}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  }
-
-                  // Directory node
-                  const isExpanded = expandedDirs.has(node.path);
-                  return (
-                    <div key={node.path} className="rules-dir" style={{ '--depth': depth }}>
-                      <div
-                        className="rules-dir-header"
-                        onClick={() => toggleDirExpand(node.path)}
-                      >
-                        <span className={`rules-chevron ${isExpanded ? 'open' : ''}`}>&#9656;</span>
-                        <span className="rules-dir-name">{node.name}</span>
-                        <span className="rules-dir-count">{node.children.length}</span>
-                      </div>
-                      {isExpanded && node.children.map(child => renderNode(child, depth + 1))}
-                    </div>
-                  );
-                }
-
-                const isRootExpanded = expandedDirs.has(rootPath);
                 return (
                   <div key={rootPath} className="rules-root">
-                    <div
-                      className="rules-root-header"
-                      onClick={() => toggleDirExpand(rootPath)}
-                    >
-                      <span className={`rules-chevron root-chevron ${isRootExpanded ? 'open' : ''}`}>&#9656;</span>
+                    <div className="rules-root-header">
                       <div className="rules-root-info">
-                        <span className="rules-root-name">{rootPath.split('/').pop() || rootPath}</span>
+                        <span className="rules-root-name">{rootName}</span>
                         <span className="rules-root-path">{rootPath}</span>
                       </div>
                       <button
-                        className="rules-remove-btn"
-                        onClick={e => { e.stopPropagation(); removeMemoryPath(rootPath); }}
+                        className="rules-remove-btn always-visible"
+                        onClick={() => removeMemoryPath(rootPath)}
                         title="Remove folder"
                       >
                         &times;
                       </button>
                     </div>
-                    {isRootExpanded && tree.children && (
-                      <div className="rules-root-children">
-                        {tree.children.map(child => renderNode(child, 0))}
-                      </div>
-                    )}
+                    <div className="rules-root-children">
+                      {files.length === 0 ? (
+                        <div className="rules-empty">No .md files found</div>
+                      ) : files.map(file => {
+                        const isExpanded = expandedFiles.has(file.path);
+                        const content = fileContents[file.path];
+                        return (
+                          <div key={file.path} className="rules-item" data-filepath={file.path}>
+                            <div
+                              className={`rules-item-header ${isExpanded ? 'expanded' : ''}`}
+                              onClick={() => toggleFileExpand(file.path)}
+                            >
+                              <span className={`rules-chevron ${isExpanded ? 'open' : ''}`}>&#9656;</span>
+                              <div className="rules-item-info">
+                                <span className="rules-item-title">{file.title || file.name}</span>
+                                {file.description && !isExpanded && (
+                                  <span className="rules-item-desc">{file.description}</span>
+                                )}
+                                {file.links && file.links.length > 0 && !isExpanded && (
+                                  <div className="rules-item-links-hint">
+                                    {file.links.length} linked {file.links.length === 1 ? 'file' : 'files'}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="rules-item-meta">
+                                <span className="rules-item-size">{(file.size / 1024).toFixed(1)}KB</span>
+                                <button
+                                  className="rules-edit-btn"
+                                  title="Edit in editor"
+                                  onClick={e => { e.stopPropagation(); openMemoryFile(file.path); }}
+                                >
+                                  Edit
+                                </button>
+                              </div>
+                            </div>
+                            {isExpanded && content !== undefined && (
+                              <div className="rules-item-content">
+                                <pre
+                                  className="rules-content-text"
+                                  onClick={e => {
+                                    if (e.target.classList.contains('memory-link')) {
+                                      e.preventDefault();
+                                      handleContentLinkClick(e.target.dataset.target);
+                                    }
+                                  }}
+                                  dangerouslySetInnerHTML={{
+                                    __html: renderMarkdownContent(
+                                      content.replace(/</g, '&lt;').replace(/>/g, '&gt;'),
+                                      file.path
+                                    )
+                                  }}
+                                />
+                                {file.links && file.links.length > 0 && (
+                                  <div className="rules-linked-files">
+                                    <div className="rules-linked-label">Linked files:</div>
+                                    {file.links.map(link => (
+                                      <button
+                                        key={link.path}
+                                        className="rules-linked-btn"
+                                        onClick={() => handleContentLinkClick(link.path)}
+                                      >
+                                        {link.label}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 );
               })}

@@ -417,7 +417,7 @@ function createServer(staticDir) {
     }
   });
 
-  // GET /api/memory/tree — return full tree with descriptions for a root path
+  // GET /api/memory/tree — return flat list of all .md files with descriptions
   app.get('/api/memory/tree', (req, res) => {
     const dir = req.query.path;
     if (!dir || !fs.existsSync(dir)) return res.status(400).json({ error: 'Invalid path' });
@@ -426,7 +426,6 @@ function createServer(staticDir) {
         try {
           const content = fs.readFileSync(filePath, 'utf-8');
           const lines = content.split('\n').filter(l => l.trim());
-          // Skip the first heading, find the first descriptive line
           let title = '';
           let desc = '';
           for (const line of lines) {
@@ -463,12 +462,11 @@ function createServer(staticDir) {
         }
       }
 
-      function buildTree(dirPath, depth = 0) {
-        if (depth > 3) return null;
+      function collectFiles(dirPath, depth = 0) {
+        if (depth > 3) return [];
         const items = fs.readdirSync(dirPath, { withFileTypes: true });
-        const children = [];
+        let files = [];
 
-        // Files first
         items
           .filter(e => e.isFile() && e.name.endsWith('.md'))
           .sort((a, b) => a.name.localeCompare(b.name))
@@ -477,39 +475,22 @@ function createServer(staticDir) {
             const s = fs.statSync(fp);
             const { title, description } = getDescription(fp);
             const links = getLinks(fp);
-            children.push({
-              name: e.name,
-              type: 'file',
-              path: fp,
-              title,
-              description,
-              links,
-              size: s.size,
-              modified: s.mtime,
-            });
+            const relativePath = fp.slice(dir.length).replace(/^\//, '');
+            files.push({ name: e.name, path: fp, relativePath, title, description, links, size: s.size, modified: s.mtime });
           });
 
-        // Then subdirectories
         items
           .filter(e => e.isDirectory() && !e.name.startsWith('.'))
           .sort((a, b) => a.name.localeCompare(b.name))
           .forEach(e => {
-            const subTree = buildTree(path.join(dirPath, e.name), depth + 1);
-            if (subTree && subTree.children.length > 0) {
-              children.push(subTree);
-            }
+            files = files.concat(collectFiles(path.join(dirPath, e.name), depth + 1));
           });
 
-        return {
-          name: path.basename(dirPath),
-          type: 'dir',
-          path: dirPath,
-          children,
-        };
+        return files;
       }
 
-      const tree = buildTree(dir);
-      res.json({ tree });
+      const files = collectFiles(dir);
+      res.json({ files, root: dir, rootName: path.basename(dir) });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

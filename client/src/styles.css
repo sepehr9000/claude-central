@@ -1218,6 +1218,10 @@ body {
   opacity: 1;
 }
 
+.rules-remove-btn.always-visible {
+  opacity: 1;
+}
+
 .rules-remove-btn:hover {
   color: #ef4444;
   background: rgba(239, 68, 68, 0.1);
@@ -1225,6 +1229,12 @@ body {
 
 .rules-root-children {
   border-top: 1px solid var(--border);
+}
+
+.rules-empty {
+  padding: 16px 20px;
+  color: var(--text-muted);
+  font-size: 13px;
 }
 
 .rules-chevron {
@@ -1289,7 +1299,6 @@ body {
   align-items: flex-start;
   gap: 8px;
   padding: 10px 16px;
-  padding-left: calc(16px + calc(var(--depth, 0) * 20px));
   cursor: pointer;
   transition: background 0.15s;
 }
@@ -1376,7 +1385,6 @@ body {
 .rules-content-text {
   margin: 0;
   padding: 14px 20px;
-  padding-left: calc(20px + calc(var(--depth, 0) * 20px));
   font-family: 'SF Mono', Menlo, Consolas, monospace;
   font-size: 12px;
   line-height: 1.6;
