@@ -691,9 +691,7 @@ function createServer(staticDir) {
     const projLabel = projectPath ? projectPath.split('/').filter(Boolean).pop() : '';
     const termTitle = projLabel ? `${projLabel}: ${tabTitle}` : tabTitle;
     const cdCmd = projectPath ? `cd ${projectPath.replace(/'/g, "'\\''")} && ` : '';
-    // Set terminal tab title via ANSI escape codes (works in all terminals)
-    const titleEsc = `printf '\\033]0;${termTitle.replace(/'/g, "\\'")}\\007' && `;
-    const claudeCmd = `${cdCmd}${titleEsc}unset CLAUDECODE && claude --dangerously-skip-permissions --resume ${id}`;
+    const claudeCmd = `${cdCmd}unset CLAUDECODE && claude --dangerously-skip-permissions --resume ${id}`;
 
     const terminalNames = {
       terminal: 'Terminal.app', iterm2: 'iTerm2', warp: 'Warp',
@@ -729,9 +727,7 @@ function createServer(staticDir) {
     const settings = loadSettings();
     const terminal = settings.terminal || 'default';
     const cdCmd = projectPath ? `cd ${projectPath.replace(/'/g, "'\\''")} && ` : '';
-    const projLabel = projectPath ? projectPath.split('/').filter(Boolean).pop() : 'Claude';
-    const titleEsc = `printf '\\033]0;${projLabel}: New Session\\007' && `;
-    const claudeCmd = `${cdCmd}${titleEsc}unset CLAUDECODE && claude --dangerously-skip-permissions`;
+    const claudeCmd = `${cdCmd}unset CLAUDECODE && claude --dangerously-skip-permissions`;
 
     launchInTerminal(claudeCmd, terminal, 'New Session', (err, usedTerminal) => {
       if (err) {
