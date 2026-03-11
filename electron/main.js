@@ -288,19 +288,20 @@ function watchSettings() {
 // --- Claude Session Monitor ---
 
 function isClaudeSession(content) {
-  // Claude Code terminals have the status bar with bypass permissions toggle
-  return content.includes('bypass permissions');
+  return content.includes('claude') && (
+    content.includes('--resume') ||
+    content.includes('--dangerously') ||
+    content.includes('Claude Code')
+  );
 }
 
 function isClaudeReady(content) {
-  // Claude Code shows ❯ or > on its own line when waiting for input.
-  // Below the prompt there's a status bar (⏵⏵ bypass permissions...) and blank lines.
-  // Check if any line in the last ~15 lines is just the prompt character.
   const lines = content.split('\n');
-  const tail = lines.slice(-15);
-  for (const line of tail) {
-    const trimmed = line.trim();
-    if (trimmed === '>' || trimmed === '❯') return true;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i].trim();
+    if (line === '') continue;
+    // Claude Code prompt: just ">" on its own line when waiting for input
+    return line === '>' || line === '❯';
   }
   return false;
 }
