@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  * { margin: 0; padding: 0; }
+  html, body {
+    background: transparent;
+    overflow: hidden;
+    width: 100%;
+    height: 100%;
+  }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .character {
+    width: 64px;
+    height: 64px;
+    position: relative;
+    animation: float 2s ease-in-out infinite;
+    filter: drop-shadow(0 4px 8px rgba(0,0,0,0.4));
+  }
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+  }
+  /* Pixel art robot using box shadows */
+  .robot {
+    width: 4px;
+    height: 4px;
+    position: absolute;
+    top: 8px;
+    left: 14px;
+    background: transparent;
+    color: transparent;
+    box-shadow:
+      /* Antenna */
+      16px 0 0 #6ee7b7,
+      16px -4px 0 #6ee7b7,
+      /* Head top */
+      8px 4px 0 #3b82f6,
+      12px 4px 0 #3b82f6,
+      16px 4px 0 #3b82f6,
+      20px 4px 0 #3b82f6,
+      24px 4px 0 #3b82f6,
+      /* Head */
+      4px 8px 0 #3b82f6,
+      8px 8px 0 #60a5fa,
+      12px 8px 0 #60a5fa,
+      16px 8px 0 #60a5fa,
+      20px 8px 0 #60a5fa,
+      24px 8px 0 #60a5fa,
+      28px 8px 0 #3b82f6,
+      /* Eyes row */
+      4px 12px 0 #3b82f6,
+      8px 12px 0 #60a5fa,
+      12px 12px 0 #fff,
+      16px 12px 0 #60a5fa,
+      20px 12px 0 #fff,
+      24px 12px 0 #60a5fa,
+      28px 12px 0 #3b82f6,
+      /* Mouth row */
+      4px 16px 0 #3b82f6,
+      8px 16px 0 #60a5fa,
+      12px 16px 0 #6ee7b7,
+      16px 16px 0 #6ee7b7,
+      20px 16px 0 #6ee7b7,
+      24px 16px 0 #60a5fa,
+      28px 16px 0 #3b82f6,
+      /* Head bottom */
+      8px 20px 0 #3b82f6,
+      12px 20px 0 #3b82f6,
+      16px 20px 0 #3b82f6,
+      20px 20px 0 #3b82f6,
+      24px 20px 0 #3b82f6,
+      /* Body */
+      8px 24px 0 #8b5cf6,
+      12px 24px 0 #a78bfa,
+      16px 24px 0 #a78bfa,
+      20px 24px 0 #a78bfa,
+      24px 24px 0 #8b5cf6,
+      8px 28px 0 #8b5cf6,
+      12px 28px 0 #a78bfa,
+      16px 28px 0 #c4b5fd,
+      20px 28px 0 #a78bfa,
+      24px 28px 0 #8b5cf6,
+      /* Arms out (open hands!) */
+      -4px 24px 0 #8b5cf6,
+      -8px 24px 0 #8b5cf6,
+      -8px 20px 0 #fbbf24,
+      -12px 20px 0 #fbbf24,
+      32px 24px 0 #8b5cf6,
+      36px 24px 0 #8b5cf6,
+      36px 20px 0 #fbbf24,
+      40px 20px 0 #fbbf24,
+      /* Legs */
+      8px 32px 0 #8b5cf6,
+      12px 32px 0 #8b5cf6,
+      20px 32px 0 #8b5cf6,
+      24px 32px 0 #8b5cf6,
+      8px 36px 0 #6366f1,
+      12px 36px 0 #6366f1,
+      20px 36px 0 #6366f1,
+      24px 36px 0 #6366f1;
+  }
+  /* Pulsing glow behind character */
+  .glow {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(99,102,241,0.3) 0%, transparent 70%);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.6; }
+    50% { transform: translate(-50%, -50%) scale(1.3); opacity: 1; }
+  }
+</style>
+</head>
+<body>
+  <div class="character">
+    <div class="glow"></div>
+    <div class="robot"></div>
+  </div>
+</body>
+</html>
